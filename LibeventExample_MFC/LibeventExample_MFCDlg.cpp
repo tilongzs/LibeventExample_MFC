@@ -292,7 +292,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 	int remotePort;
 	ConvertIPPort(*(sockaddr_in*)sa, remoteIP, remotePort);
 	CString tmpStr;
-	tmpStr.Format(L"threadID:%d 新客户端%s:%d 连接", get_id(), S2WS(remoteIP).c_str(), remotePort);
+	tmpStr.Format(L"threadID:%d 新客户端%s:%d 连接", get_id(), S2Unicode(remoteIP).c_str(), remotePort);
 	eventBaseData->dlg->AppendMsg(tmpStr);
 }
 
@@ -538,7 +538,7 @@ static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
 			ConvertIPPort(addr, remoteIP, remotePort);
 
 			CString tmpStr;
-			tmpStr.Format(L"threadID:%d 收到来自%s:%d %u字节", get_id(), S2WS(remoteIP).c_str(), remotePort, recvLen);
+			tmpStr.Format(L"threadID:%d 收到来自%s:%d %u字节", get_id(), S2Unicode(remoteIP).c_str(), remotePort, recvLen);
 			eventBaseData->dlg->AppendMsg(tmpStr);
 		}
 
