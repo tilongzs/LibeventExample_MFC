@@ -207,6 +207,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnClient()
 {
 	if (_currentBufferevent)
 	{
+		bufferevent_replacefd(_currentBufferevent, -1);
 		bufferevent_free(_currentBufferevent);
 	}
 }
@@ -216,12 +217,6 @@ static void OnServerWrite(bufferevent* bev, void* param)
 	EventBaseData* eventBaseData = (EventBaseData*)param;
 
 	eventBaseData->dlg->AppendMsg(L"OnServerWrite");
-
-//  if ( strlen(g_szWriteMsg) > 0 )
-//  {
-//      bufferevent_write(bev, g_szWriteMsg, strlen(g_szWriteMsg));
-//      memset(g_szWriteMsg, 0x00, sizeof(g_szWriteMsg));
-//  }
 }
 
 static void OnServerRead(bufferevent* bev, void* param)
@@ -492,6 +487,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnectServer()
 {
 	if (_currentBufferevent)
 	{
+		bufferevent_replacefd(_currentBufferevent, -1);
 		bufferevent_free(_currentBufferevent);
 	}
 }
