@@ -51,11 +51,10 @@ private:
 
 	void InitTimer();
 public:
-	CListBox _listClient;
 	void AppendMsg(const WCHAR* msg);
-
 	void SetCurrentBufferevent(bufferevent* bev);
 
+private:
 	afx_msg void OnBnClickedButtonDisconnClient();
 	afx_msg void OnBnClickedButtonListen();
 	afx_msg void OnBnClickedButtonCreatetimer();
