@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <functional>
 #include <future>
-// VCPKG管理
+
 #include "event2/event.h"
 #include "event2/thread.h"
 #include "event2/util.h"
@@ -9,7 +9,6 @@
 #include "event2/bufferevent_ssl.h"
 #include "event2/buffer.h"
 #include "event2/listener.h"
-/*******************************/
 
 using std::function;
 using std::future;

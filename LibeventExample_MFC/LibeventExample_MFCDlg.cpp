@@ -11,7 +11,7 @@
 #include <corecrt_io.h>
 #include <thread>
 
-// VCPKG管理
+// vcpkg管理
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 /*******************************/
