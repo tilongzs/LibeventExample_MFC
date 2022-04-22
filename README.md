@@ -1,4 +1,5 @@
 # LibeventExample_MFC
 Libevent的MFC框架示例。
-1、基于libevent 2022/3/14版本（SHA-1: 66861f8891ef8dee453fb5500376d2e0b6ff8092）
+1、基于libevent(Vcpkg管理)
 2、完成TCP、UDP基本示例
+3、完成SSL通信示例
