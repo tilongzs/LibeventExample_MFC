@@ -30,16 +30,12 @@ using std::this_thread::get_id;
 #define SINGLE_PACKAGE_SIZE 65536 * 10 // 默认16384
 #define SINGLE_UDP_PACKAGE_SIZE 65507 // 单个UDP包的最大大小（理论值：65507字节）
 
-struct EventBaseData
-{
-	CLibeventExample_MFCDlg* dlg;
-	ssl_ctx_st* ssl_ctx;
-};
-
 struct EventData
 {
 	CLibeventExample_MFCDlg* dlg;
-	event* ev;
+	bufferevent* bev;
+	ssl_ctx_st* ssl_ctx;
+	ssl_st* ssl;
 };
 
 CLibeventExample_MFCDlg::CLibeventExample_MFCDlg(CWnd* pParent /*=nullptr*/)
@@ -161,11 +157,6 @@ void CLibeventExample_MFCDlg::AppendMsg(const WCHAR* msg)
 	PostMessage(WMSG_FUNCTION, (WPARAM)pFunc);
 }
 
-void CLibeventExample_MFCDlg::SetCurrentBufferevent(bufferevent* bev)
-{
-	_currentBufferevent = bev;
-}
-
 bool CLibeventExample_MFCDlg::IsUseSSL()
 {
 	return _btnUseSSL.GetCheck();
@@ -216,26 +207,32 @@ void CLibeventExample_MFCDlg::InitTimer()
 
 void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnClient()
 {
-	if (_currentBufferevent)
+	if (_currentEventData)
 	{
-		evutil_socket_t fd = bufferevent_getfd(_currentBufferevent);
+		evutil_socket_t fd = bufferevent_getfd(_currentEventData->bev);
+		if (_currentEventData->ssl)
+		{
+			SSL_shutdown(_currentEventData->ssl);
+			_currentEventData->ssl = nullptr;
+		}
+
 		closesocket(fd);
-		bufferevent_setfd(_currentBufferevent, -1);
+		bufferevent_setfd(_currentEventData->bev, -1);
 		//bufferevent_replacefd(_currentBufferevent, -1);// libevent 2.2.0
-		bufferevent_free(_currentBufferevent);
+		bufferevent_free(_currentEventData->bev);
 	}
 }
 
 static void OnServerWrite(bufferevent* bev, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
-	eventBaseData->dlg->AppendMsg(L"OnServerWrite");
+	eventData->dlg->AppendMsg(L"OnServerWrite");
 }
 
 static void OnServerRead(bufferevent* bev, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
 	evbuffer* input = bufferevent_get_input(bev);
 	size_t sz = evbuffer_get_length(input);
@@ -246,7 +243,7 @@ static void OnServerRead(bufferevent* bev, void* param)
 
 		CString tmpStr;
 		tmpStr.Format(L"threadID:%d 收到%u字节", get_id(), sz);
-		eventBaseData->dlg->AppendMsg(tmpStr);		
+		eventData->dlg->AppendMsg(tmpStr);		
 
 		delete[] buffer;
 	}
@@ -254,15 +251,15 @@ static void OnServerRead(bufferevent* bev, void* param)
 
 static void OnServerEvent(bufferevent* bev, short events, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
-	if (events & BEV_EVENT_CONNECTED)
+	if (events & BEV_EVENT_EOF) 
 	{
-		eventBaseData->dlg->AppendMsg(L"BEV_EVENT_CONNECTED");
-	}
-	else if (events & BEV_EVENT_EOF) 
-	{
-		eventBaseData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
+		eventData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
+		if (eventData->ssl)
+		{
+			SSL_shutdown(eventData->ssl);
+		}
 		bufferevent_free(bev);
 	}
 	else if (events & BEV_EVENT_ERROR)
@@ -277,24 +274,24 @@ static void OnServerEvent(bufferevent* bev, short events, void* param)
 			tmpStr.Format(L"BEV_EVENT_ERROR BEV_EVENT_WRITING错误errno:%d", errno);
 		}
 	
-		eventBaseData->dlg->AppendMsg(tmpStr);
+		eventData->dlg->AppendMsg(tmpStr);
 		bufferevent_free(bev);
 	}
 }
 
 static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, sockaddr* sa, int socklen, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 	event_base* eventBase = evconnlistener_get_base(listener);
 
 	//构造一个bufferevent
 	bufferevent* bev = nullptr;
-	if (eventBaseData->dlg->IsUseSSL())
+	if (eventData->dlg->IsUseSSL())
 	{
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
-		ssl_st* ssl = SSL_new(eventBaseData->ssl_ctx);
-		SSL_set_fd(ssl, fd);
-		bev = bufferevent_openssl_socket_new(eventBase, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
+		eventData->ssl = SSL_new(eventData->ssl_ctx);
+		SSL_set_fd(eventData->ssl, fd);
+		bev = bufferevent_openssl_socket_new(eventBase, fd, eventData->ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
 	}
 	else
 	{
@@ -303,35 +300,35 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 
 	if (!bev) 
 	{
-		eventBaseData->dlg->AppendMsg(L"bufferevent_socket_new失败");
+		eventData->dlg->AppendMsg(L"bufferevent_socket_new失败");
 		event_base_loopbreak(eventBase);
 		return;
 	}
+	eventData->bev = bev;
 
 	// 修改读写上限
 	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
-		eventBaseData->dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
+		eventData->dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
 	}
 	ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
-		eventBaseData->dlg->AppendMsg(L"bufferevent_set_max_single_write失败");
+		eventData->dlg->AppendMsg(L"bufferevent_set_max_single_write失败");
 	}
 
 	//绑定读事件回调函数、写事件回调函数、错误事件回调函数
-	bufferevent_setcb(bev, OnServerRead, OnServerWrite, OnServerEvent, eventBaseData);
+	bufferevent_setcb(bev, OnServerRead, OnServerWrite, OnServerEvent, eventData);
 
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
-	eventBaseData->dlg->SetCurrentBufferevent(bev);
 
 	string remoteIP;
 	int remotePort;
 	ConvertIPPort(*(sockaddr_in*)sa, remoteIP, remotePort);
 	CString tmpStr;
 	tmpStr.Format(L"threadID:%d 新客户端%s:%d 连接", get_id(), S2Unicode(remoteIP).c_str(), remotePort);
-	eventBaseData->dlg->AppendMsg(tmpStr);
+	eventData->dlg->AppendMsg(tmpStr);
 }
 
 void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
@@ -352,8 +349,8 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
 	localAddr.sin_family = AF_INET;
 	localAddr.sin_port = htons(port);
 
-	EventBaseData* eventBaseData = new EventBaseData;
-	eventBaseData->dlg = this;
+	EventData* eventData = new EventData;
+	eventData->dlg = this;
 
 	if (IsUseSSL())
 	{
@@ -387,10 +384,10 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
 			return;
 		}
 
-		eventBaseData->ssl_ctx = ssl_ctx;
+		eventData->ssl_ctx = ssl_ctx;
 	}
 
-	_listener = evconnlistener_new_bind(eventBase, OnServerEventAccept, eventBaseData,
+	_listener = evconnlistener_new_bind(eventBase, OnServerEventAccept, eventData,
 		LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
 		(sockaddr*)&localAddr, sizeof(localAddr));
 	if (!_listener)
@@ -400,12 +397,15 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
 		event_base_free(eventBase);
 		if (IsUseSSL())
 		{
-			SSL_CTX_free(eventBaseData->ssl_ctx);
+			SSL_CTX_free(eventData->ssl_ctx);
 		}
+
+		delete eventData;
 		return;
 	}
+	_currentEventData = eventData;
 
-	thread([&, eventBase, eventBaseData]
+	thread([&, eventBase]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"服务端socket event_base_dispatch线程 结束");
@@ -414,9 +414,10 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
 		event_base_free(eventBase);
 		if (IsUseSSL())
 		{
-			SSL_CTX_free(eventBaseData->ssl_ctx);
+			SSL_CTX_free(_currentEventData->ssl_ctx);
 		}
-		delete eventBaseData;
+		delete _currentEventData;
+		_currentEventData = nullptr;
 	}).detach();
 
 	AppendMsg(L"服务端开始监听");
@@ -432,14 +433,14 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonStopListen()
 
 static void OnClientWrite(bufferevent* bev, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
-	eventBaseData->dlg->AppendMsg(L"OnClientWrite");
+	eventData->dlg->AppendMsg(L"OnClientWrite");
 }
 
 static void OnClientRead(bufferevent* bev, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
 	evbuffer* input = bufferevent_get_input(bev);
 	size_t sz = evbuffer_get_length(input);
@@ -450,7 +451,7 @@ static void OnClientRead(bufferevent* bev, void* param)
 
 		CString tmpStr;
 		tmpStr.Format(L"threadID:%d 收到%u字节", get_id(), sz);
-		eventBaseData->dlg->AppendMsg(tmpStr);
+		eventData->dlg->AppendMsg(tmpStr);
 
 		delete[] buffer;
 	}
@@ -458,25 +459,15 @@ static void OnClientRead(bufferevent* bev, void* param)
 
 static void OnClientEvent(bufferevent* bev, short events, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
 	if (events & BEV_EVENT_CONNECTED)
 	{
-		eventBaseData->dlg->SetCurrentBufferevent(bev);
-
-		//	if (eventBaseData->dlg->IsUseSSL())
-		//	{
-		//		evutil_socket_t fd = bufferevent_getfd(bev);
-		//		ssl_ctx_st* ssl_ctx = SSL_CTX_new(TLS_client_method());
-		//		ssl_st* ssl = SSL_new(ssl_ctx);
-		//		SSL_set_fd(ssl, fd);
-		//	}
-
-		eventBaseData->dlg->AppendMsg(L"连接服务端成功");
+		eventData->dlg->AppendMsg(L"连接服务端成功");
 	}
 	else if (events & BEV_EVENT_EOF) 
 	{
-		eventBaseData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
+		eventData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
 		bufferevent_free(bev);
 	}
 	else if (events & BEV_EVENT_ERROR)
@@ -490,7 +481,7 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 		{
 			tmpStr.Format(L"BEV_EVENT_ERROR BEV_EVENT_WRITING错误errno:%d", errno);
 		}
-		eventBaseData->dlg->AppendMsg(tmpStr);
+		eventData->dlg->AppendMsg(tmpStr);
 		bufferevent_free(bev);
 	}
 }
@@ -524,16 +515,16 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 // 	bufferevent* bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_CLOSE_ON_FREE);
 	/************************************************************/
 
-	EventBaseData* eventBaseData = new EventBaseData;
-	eventBaseData->dlg = this;
+	EventData* eventData = new EventData;
+	eventData->dlg = this;
 
 	bufferevent* bev = nullptr;
 	if (IsUseSSL())
 	{
-		ssl_ctx_st* ssl_ctx = SSL_CTX_new(TLS_client_method());
-		ssl_st* ssl = SSL_new(ssl_ctx);
-		eventBaseData->ssl_ctx = ssl_ctx;
-		bev = bufferevent_openssl_socket_new(eventBase, -1, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+		eventData->ssl_ctx = SSL_CTX_new(TLS_client_method());
+		eventData->ssl = SSL_new(eventData->ssl_ctx);
+		bev = bufferevent_openssl_socket_new(eventBase, -1, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
 	}
 	else
 	{
@@ -544,17 +535,18 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 	{
 		AppendMsg(L"bufferevent_socket_new失败");
 		event_base_free(eventBase);
-		if (eventBaseData->ssl_ctx)
+		if (eventData->ssl_ctx)
 		{
-			SSL_CTX_free(eventBaseData->ssl_ctx);
+			SSL_CTX_free(eventData->ssl_ctx);
 		}
 
-		delete eventBaseData;
+		delete eventData;
 		return;
 	}
-
+	eventData->bev = bev;
+	_currentEventData = eventData;
 	
-	bufferevent_setcb(bev, OnClientRead, OnClientWrite, OnClientEvent, eventBaseData);
+	bufferevent_setcb(bev, OnClientRead, OnClientWrite, OnClientEvent, eventData);
 
 	// 修改读写上限
 	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
@@ -589,7 +581,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 
-	thread([&, eventBase, eventBaseData]
+	thread([&, eventBase]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"客户端socket event_base_dispatch线程 结束");
@@ -597,27 +589,34 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 		event_base_free(eventBase);
 		if (IsUseSSL())
 		{
-			SSL_CTX_free(eventBaseData->ssl_ctx);
+			SSL_CTX_free(_currentEventData->ssl_ctx);
 		}
-		delete eventBaseData;
+		delete _currentEventData;
+		_currentEventData = nullptr;
 	}).detach();
 }
 
 void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnectServer()
 {
-	if (_currentBufferevent)
+	if (_currentEventData)
 	{
-		evutil_socket_t fd = bufferevent_getfd(_currentBufferevent);
+		if (_currentEventData->ssl)
+		{
+			SSL_shutdown(_currentEventData->ssl);
+			_currentEventData->ssl = nullptr;
+		}
+
+		evutil_socket_t fd = bufferevent_getfd(_currentEventData->bev);
 		closesocket(fd);
-		bufferevent_setfd(_currentBufferevent, -1);
-		//bufferevent_replacefd(_currentBufferevent, -1); // libevent 2.2.0
+		bufferevent_setfd(_currentEventData->bev, -1);
+		//bufferevent_replacefd(_currentEventData->bev, -1); // libevent 2.2.0
 	}
 }
 
 void CLibeventExample_MFCDlg::OnBnClickedButtonSendMsg()
 {
 	thread([&] {
-		if (_currentBufferevent)
+		if (_currentEventData)
 		{
 	// 		char* msg = new char[]("hello libevent");
 	// 		int len = strlen(msg);
@@ -625,7 +624,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonSendMsg()
 			const int len = 1024 * 1024;
 			char* msg = new char[len]{0};
 
-			int ret = bufferevent_write(_currentBufferevent, msg, len);
+			int ret = bufferevent_write(_currentEventData->bev, msg, len);
 			if (ret != 0)
 			{
 				AppendMsg(L"发送数据失败");
@@ -638,7 +637,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonSendMsg()
 
 static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
 {
-	EventBaseData* eventBaseData = (EventBaseData*)param;
+	EventData* eventData = (EventData*)param;
 
 	if (events & EV_READ)
 	{
@@ -649,7 +648,7 @@ static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
 		int recvLen = recvfrom(sockfd, buffer, SINGLE_UDP_PACKAGE_SIZE, 0, (sockaddr*)&addr, &addLen);
 		if (recvLen == -1)
 		{
-			eventBaseData->dlg->AppendMsg(L"recvfrom 失败");
+			eventData->dlg->AppendMsg(L"recvfrom 失败");
 		}
 		else
 		{
@@ -659,7 +658,7 @@ static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
 
 			CString tmpStr;
 			tmpStr.Format(L"threadID:%d 收到来自%s:%d %u字节", get_id(), S2Unicode(remoteIP).c_str(), remotePort, recvLen);
-			eventBaseData->dlg->AppendMsg(tmpStr);
+			eventData->dlg->AppendMsg(tmpStr);
 		}
 
 		delete[] buffer;
@@ -690,11 +689,11 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind()
 		return;
 	}
 
-	EventBaseData* eventBaseData = new EventBaseData;
-	eventBaseData->dlg = this;
+	EventData* eventData = new EventData;
+	eventData->dlg = this;
 
 	_currentEvent = event_new(NULL, -1, 0, NULL, NULL);
-	int ret = event_assign(_currentEvent, eventBase, _currentSockfd, EV_READ | EV_PERSIST, OnUDPRead, (void*)eventBaseData);
+	int ret = event_assign(_currentEvent, eventBase, _currentSockfd, EV_READ | EV_PERSIST, OnUDPRead, (void*)eventData);
 	if (ret != 0)
 	{
 		AppendMsg(L"event_assign失败");
@@ -704,7 +703,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind()
 	}
 	event_add(_currentEvent, nullptr);
 
-	thread([&, eventBase, eventBaseData]
+	thread([&, eventBase, eventData]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"UDP线程 结束");
@@ -713,7 +712,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind()
 		_currentEvent = nullptr;
 		_currentSockfd = -1;
 		event_base_free(eventBase);
-		delete eventBaseData;
+		delete eventData;
 	}).detach();
 
 	AppendMsg(L"UDP启动成功");

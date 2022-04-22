@@ -14,6 +14,8 @@
 using std::function;
 using std::future;
 
+struct EventData;
+
 class CLibeventExample_MFCDlg : public CDialogEx
 {
 public:
@@ -37,8 +39,7 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
-
-	
+		
 	LRESULT OnFunction(WPARAM wParam, LPARAM lParam);
 private:
 	CEdit _editRecv;
@@ -48,7 +49,7 @@ private:
 
 	// TCP
 	evconnlistener* _listener = nullptr;
-	bufferevent* _currentBufferevent = nullptr;
+	EventData* _currentEventData = nullptr;
 
 	// UDP
 	evutil_socket_t _currentSockfd = -1;
@@ -57,7 +58,6 @@ private:
 	void InitTimer();
 public:
 	void AppendMsg(const WCHAR* msg);
-	void SetCurrentBufferevent(bufferevent* bev);
 	bool IsUseSSL();
 
 private:
