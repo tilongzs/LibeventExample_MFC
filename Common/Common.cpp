@@ -1,5 +1,6 @@
 ﻿#include "Common.h"
 #include <stringapiset.h>
+#include <Shlwapi.h>
 
 wstring UTF8ToUnicode(const char* utf8Str)
 {
@@ -54,6 +55,22 @@ wstring S2Unicode(const string& str)
 	{
 		return MBToUnicode(tmpStr);
 	}
+}
+
+CStringA UnicodeToUTF8(const CStringW& unicodeStr)
+{
+	char* pMultiBuf = NULL;
+	int nMiltiBufLen = WideCharToMultiByte(CP_UTF8, 0, unicodeStr, -1, pMultiBuf, 0, NULL, NULL);
+
+	pMultiBuf = new char[nMiltiBufLen + 1];
+	memset(pMultiBuf, 0, nMiltiBufLen + 1);
+
+	WideCharToMultiByte(CP_UTF8, 0, unicodeStr, -1, (char*)pMultiBuf, nMiltiBufLen, NULL, NULL);
+
+	CStringA strTarget(pMultiBuf);
+	delete[] pMultiBuf;
+
+	return strTarget;
 }
 
 bool IsUTF8(const char* str, size_t length)
@@ -131,4 +148,22 @@ void ConvertIPPort(DWORD ip, int port, SOCKADDR_IN& addr)
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = htonl(ip);
 	addr.sin_port = htons(port);
+}
+
+CString GetModuleDir()
+{
+	WCHAR buf[MAX_PATH];
+	GetModuleFileName(NULL, buf, MAX_PATH * sizeof(WCHAR));
+
+	GetLongPathName(buf, buf, MAX_PATH * sizeof(WCHAR));
+	PathRemoveFileSpec(buf);
+	return buf;
+}
+
+CString CombinePath(const CString& folder, const CString& extraPath)
+{
+	WCHAR buf[MAX_PATH] = { 0 };
+	wcscpy_s(buf, folder);
+	PathAppend(buf, extraPath);
+	return buf;
 }

@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <functional>
 #include <future>
+// VCPKG管理
 #include "event2/event.h"
 #include "event2/thread.h"
 #include "event2/util.h"
@@ -8,6 +9,8 @@
 #include "event2/bufferevent_ssl.h"
 #include "event2/buffer.h"
 #include "event2/listener.h"
+/*******************************/
+
 using std::function;
 using std::future;
 
@@ -41,6 +44,7 @@ private:
 	CEdit _editRecv;
 	CEdit _editPort;
 	CEdit _editRemotePort;
+	CButton _btnUseSSL;
 
 	// TCP
 	evconnlistener* _listener = nullptr;
@@ -54,6 +58,7 @@ private:
 public:
 	void AppendMsg(const WCHAR* msg);
 	void SetCurrentBufferevent(bufferevent* bev);
+	bool IsUseSSL();
 
 private:
 	afx_msg void OnBnClickedButtonDisconnClient();
