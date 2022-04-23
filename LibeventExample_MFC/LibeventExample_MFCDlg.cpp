@@ -27,7 +27,7 @@ using std::this_thread::get_id;
 #define WMSG_FUNCTION		WM_USER + 1
 #define DEFAULT_SOCKET_IP "127.0.0.1"
 #define DEFAULT_SOCKET_PORT 23300
-#define SINGLE_PACKAGE_SIZE 65536 * 10 // 默认16384
+#define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
 #define SINGLE_UDP_PACKAGE_SIZE 65507 // 单个UDP包的最大大小（理论值：65507字节）
 
 struct EventData
@@ -283,6 +283,10 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 {
 	EventData* eventData = (EventData*)param;
 	event_base* eventBase = evconnlistener_get_base(listener);
+
+	int bufLen = SINGLE_PACKAGE_SIZE;
+	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int));
+	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int));
 
 	//构造一个bufferevent
 	bufferevent* bev = nullptr;
@@ -548,18 +552,6 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 	
 	bufferevent_setcb(bev, OnClientRead, OnClientWrite, OnClientEvent, eventData);
 
-	// 修改读写上限
-	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
-	if (ret != 0)
-	{
-		AppendMsg(L"bufferevent_set_max_single_read失败");
-	}
-	ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
-	if (ret != 0)
-	{
-		AppendMsg(L"bufferevent_set_max_single_write失败");
-	}
-
 	//连接服务端	
 	_editRemotePort.GetWindowText(tmpStr);
 	const int remotePort = _wtoi(tmpStr);
@@ -577,6 +569,22 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 		bufferevent_free(bev);
 		event_base_free(eventBase);
 		return;
+	}
+
+	// 修改读写上限
+	int bufLen = SINGLE_PACKAGE_SIZE;
+	evutil_socket_t fd = bufferevent_getfd(bev);
+	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int));
+	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int));
+	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
+	if (ret != 0)
+	{
+		AppendMsg(L"bufferevent_set_max_single_read失败");
+	}
+	ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
+	if (ret != 0)
+	{
+		AppendMsg(L"bufferevent_set_max_single_write失败");
 	}
 
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
