@@ -10,6 +10,8 @@
 #include "event2/buffer.h"
 #include "event2/listener.h"
 
+#include "event2/http.h"
+
 using std::function;
 using std::future;
 
@@ -54,6 +56,10 @@ private:
 	evutil_socket_t _currentSockfd = -1;
 	event* _currentEvent = nullptr;
 
+	// HTTP
+	evhttp* _httpServer = nullptr;
+	evhttp_bound_socket* _httpSocket;
+
 	void InitTimer();
 public:
 	void AppendMsg(const WCHAR* msg);
@@ -70,4 +76,9 @@ private:
 	afx_msg void OnBnClickedButtonUdpBind();
 	afx_msg void OnBnClickedButtonUdpSendMsg();	
 	afx_msg void OnBnClickedButtonUdpClose();
+public:
+	CButton _btnHTTPServer;
+	afx_msg void OntnHttpServer();
+	CButton _btnStopHttpServer;
+	afx_msg void OnBtnStopHttpServer();
 };

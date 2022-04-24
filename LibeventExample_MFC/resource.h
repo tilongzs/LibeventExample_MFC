@@ -21,8 +21,10 @@
 #define IDC_EDIT_PORT_REMOTE            1012
 #define IDC_BUTTON_UDP_BIND2            1013
 #define IDC_BUTTON_UDP_CLOSE            1013
-#define IDC_CHECK1                      1014
 #define IDC_CHECK_SSL                   1014
+#define IDC_BUTTON_HTTP_SERVER          1015
+#define IDC_BUTTON_HTTP_SERVER2         1016
+#define IDC_BUTTON_HTTP_SERVER_STOP     1016
 
 // Next default values for new objects
 // 

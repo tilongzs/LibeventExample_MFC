@@ -14,6 +14,8 @@
 // vcpkg管理
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <event2/keyvalq_struct.h>
+#include <event2/http_struct.h>
 /*******************************/
 
 using std::async;
@@ -51,6 +53,8 @@ void CLibeventExample_MFCDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_EDIT_PORT, _editPort);
 	DDX_Control(pDX, IDC_EDIT_PORT_REMOTE, _editRemotePort);
 	DDX_Control(pDX, IDC_CHECK_SSL, _btnUseSSL);
+	DDX_Control(pDX, IDC_BUTTON_HTTP_SERVER, _btnHTTPServer);
+	DDX_Control(pDX, IDC_BUTTON_HTTP_SERVER_STOP, _btnStopHttpServer);
 }
 
 BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
@@ -67,6 +71,8 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_UDP_BIND, &CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind)
 	ON_BN_CLICKED(IDC_BUTTON_UDP_SEND_MSG, &CLibeventExample_MFCDlg::OnBnClickedButtonUdpSendMsg)
 	ON_BN_CLICKED(IDC_BUTTON_UDP_CLOSE, &CLibeventExample_MFCDlg::OnBnClickedButtonUdpClose)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER, &CLibeventExample_MFCDlg::OntnHttpServer)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER_STOP, &CLibeventExample_MFCDlg::OnBtnStopHttpServer)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -78,6 +84,8 @@ BOOL CLibeventExample_MFCDlg::OnInitDialog()
 
 	_editPort.SetWindowText(L"23300");
 	_editRemotePort.SetWindowText(L"23300");
+
+	_btnStopHttpServer.EnableWindow(FALSE);
 
 	AppendMsg(L"启动");
 	
@@ -757,5 +765,147 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonUdpClose()
 	if (_currentSockfd != -1)
 	{
 		closesocket(_currentSockfd);
+	}
+}
+
+static void OnHTTP_API_getA(evhttp_request* req, void* arg)
+{
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+
+	const char* uri = evhttp_request_get_uri(req);// 获取请求uri
+	evhttp_uri* decoded = evhttp_uri_parse(uri);// 解码uri
+	if (!decoded)
+	{
+		evhttp_send_error(req, HTTP_BADREQUEST, NULL);
+		return;
+	}
+
+	const char* path = evhttp_uri_get_path(decoded); // 获取uri中的path部分
+	if (!path)
+	{
+		path = "/";
+	}
+
+	const char* query = evhttp_uri_get_query(decoded); // 获取uri中的参数部分
+	if (!query)
+	{
+		evhttp_send_error(req, HTTP_NOCONTENT, NULL);
+		return;
+	}
+
+	//查询指定参数的值
+	evkeyvalq params = { 0 };
+	evhttp_parse_query_str(query, &params);
+	const char* value = evhttp_find_header(&params, "s");
+	value = evhttp_find_header(&params, "q");
+
+	// 回复
+	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"感谢Thanks use getA"));
+	//evbuffer_add(req->output_buffer, s, strlen(s));
+	evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
+}
+
+static void OnHTTP_API_postA(evhttp_request* req, void* arg)
+{
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+
+	const char* s = "This is the test buf";
+	evbuffer_add(req->output_buffer, s, strlen(s));
+	evhttp_send_reply(req, 200, "OK", nullptr);
+}
+
+static void OnHTTP_API_setA(evhttp_request* req, void* arg)
+{
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+
+	const char* s = "This is the test buf";
+	evbuffer_add(req->output_buffer, s, strlen(s));
+	evhttp_send_reply(req, 200, "OK", nullptr);
+}
+
+static void OnHTTP_API_delA(evhttp_request* req, void* arg)
+{
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+
+	const char* s = "This is the test buf";
+	evbuffer_add(req->output_buffer, s, strlen(s));
+	evhttp_send_reply(req, 200, "OK", nullptr);
+}
+
+static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
+{
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+
+	const char* s = "This is the generic buf";
+	evbuffer_add(req->output_buffer, s, strlen(s));
+	evhttp_send_reply(req, 200, "OK", nullptr);
+}
+
+void CLibeventExample_MFCDlg::OntnHttpServer()
+{
+	const char* httpAddr = "0.0.0.0";
+	event_base* eventBase = event_base_new();
+	if (!eventBase)
+	{
+		AppendMsg(L"创建eventBase失败");
+		return;
+	}
+
+	_httpServer = evhttp_new(eventBase);
+	if (!_httpServer)
+	{
+		AppendMsg(L"创建http_server失败");
+
+		event_base_free(eventBase);
+		return;
+	}
+
+	_btnHTTPServer.EnableWindow(FALSE);
+	_btnStopHttpServer.EnableWindow(TRUE);
+
+	CString tmpStr;
+	_editPort.GetWindowText(tmpStr);
+	const int port = _wtoi(tmpStr);
+
+	_httpSocket = evhttp_bind_socket_with_handle(_httpServer, httpAddr, port);
+	if (!_httpSocket)
+	{
+		AppendMsg(L"创建evhttp_bind_socket失败");
+		return;
+	}
+
+	//设置处理请求的超时时间(s)
+	evhttp_set_timeout(_httpServer, 3);
+
+	/*
+		URI like http://127.0.0.1:23300/api/getA?q=test&s=some+thing
+		The first entry is: key="q", value="test"
+		The second entry is: key="s", value="some thing"
+	*/		
+	evhttp_set_cb(_httpServer, "/api/getA", OnHTTP_API_getA, this);
+
+	evhttp_set_cb(_httpServer, "/api/postA", OnHTTP_API_postA, this);
+	evhttp_set_cb(_httpServer, "/api/setA", OnHTTP_API_setA, this);
+	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
+	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
+	
+	AppendMsg(L"HTTP 服务端启动");
+	thread([&, eventBase]
+	{
+		event_base_dispatch(eventBase); // 阻塞
+		evhttp_free(_httpServer);
+	}).detach();		
+}
+
+
+void CLibeventExample_MFCDlg::OnBtnStopHttpServer()
+{
+	if (_httpServer && _httpSocket)
+	{
+		evhttp_del_accept_socket(_httpServer, _httpSocket);
+
+		AppendMsg(L"HTTP 服务端停止");
+		_btnHTTPServer.EnableWindow(TRUE);
+		_btnStopHttpServer.EnableWindow(FALSE);
 	}
 }

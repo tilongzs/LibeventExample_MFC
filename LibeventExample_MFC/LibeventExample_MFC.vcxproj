@@ -128,7 +128,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>event_core.lib;event_openssl.lib;libssl.lib</AdditionalDependencies>
+      <AdditionalDependencies>event.lib;event_core.lib;event_openssl.lib;libssl.lib;event_extra.lib</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
