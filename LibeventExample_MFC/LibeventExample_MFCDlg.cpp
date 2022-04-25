@@ -61,17 +61,17 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_MESSAGE(WMSG_FUNCTION, &CLibeventExample_MFCDlg::OnFunction)
-	ON_BN_CLICKED(IDC_BUTTON_DISCONN_CLIENT, &CLibeventExample_MFCDlg::OnBnClickedButtonDisconnClient)
-	ON_BN_CLICKED(IDC_BUTTON_LISTEN, &CLibeventExample_MFCDlg::OnBnClickedButtonListen)
-	ON_BN_CLICKED(IDC_BUTTON_CREATETIMER, &CLibeventExample_MFCDlg::OnBnClickedButtonCreatetimer)
-	ON_BN_CLICKED(IDC_BUTTON_STOP_LISTEN, &CLibeventExample_MFCDlg::OnBnClickedButtonStopListen)
-	ON_BN_CLICKED(IDC_BUTTON_CONNECT, &CLibeventExample_MFCDlg::OnBnClickedButtonConnect)
-	ON_BN_CLICKED(IDC_BUTTON_DISCONNECT_SERVER, &CLibeventExample_MFCDlg::OnBnClickedButtonDisconnectServer)
-	ON_BN_CLICKED(IDC_BUTTON_SEND_MSG, &CLibeventExample_MFCDlg::OnBnClickedButtonSendMsg)
-	ON_BN_CLICKED(IDC_BUTTON_UDP_BIND, &CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind)
-	ON_BN_CLICKED(IDC_BUTTON_UDP_SEND_MSG, &CLibeventExample_MFCDlg::OnBnClickedButtonUdpSendMsg)
-	ON_BN_CLICKED(IDC_BUTTON_UDP_CLOSE, &CLibeventExample_MFCDlg::OnBnClickedButtonUdpClose)
-	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER, &CLibeventExample_MFCDlg::OntnHttpServer)
+	ON_BN_CLICKED(IDC_BUTTON_DISCONN_CLIENT, &CLibeventExample_MFCDlg::OnBtnDisconnClient)
+	ON_BN_CLICKED(IDC_BUTTON_LISTEN, &CLibeventExample_MFCDlg::OnBtnListen)
+	ON_BN_CLICKED(IDC_BUTTON_CREATETIMER, &CLibeventExample_MFCDlg::OnBtnCreatetimer)
+	ON_BN_CLICKED(IDC_BUTTON_STOP_LISTEN, &CLibeventExample_MFCDlg::OnBtnStopListen)
+	ON_BN_CLICKED(IDC_BUTTON_CONNECT, &CLibeventExample_MFCDlg::OnBtnConnect)
+	ON_BN_CLICKED(IDC_BUTTON_DISCONNECT_SERVER, &CLibeventExample_MFCDlg::OnBtnDisconnectServer)
+	ON_BN_CLICKED(IDC_BUTTON_SEND_MSG, &CLibeventExample_MFCDlg::OnBtnSendMsg)
+	ON_BN_CLICKED(IDC_BUTTON_UDP_BIND, &CLibeventExample_MFCDlg::OnBtnUdpBind)
+	ON_BN_CLICKED(IDC_BUTTON_UDP_SEND_MSG, &CLibeventExample_MFCDlg::OnBtnUdpSendMsg)
+	ON_BN_CLICKED(IDC_BUTTON_UDP_CLOSE, &CLibeventExample_MFCDlg::OnBtnUdpClose)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER, &CLibeventExample_MFCDlg::OnBtnHttpServer)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER_STOP, &CLibeventExample_MFCDlg::OnBtnStopHttpServer)
 END_MESSAGE_MAP()
 
@@ -90,12 +90,6 @@ BOOL CLibeventExample_MFCDlg::OnInitDialog()
 	AppendMsg(L"启动");
 	
 	AfxSocketInit();
-
-	int ret = evthread_use_windows_threads();
-	if (ret != 0)
-	{
-		AppendMsg(L"设置libevent多线程模式失败");
-	}
 
 	return TRUE; 
 }
@@ -179,7 +173,7 @@ LRESULT CLibeventExample_MFCDlg::OnFunction(WPARAM wParam, LPARAM lParam)
 	return TRUE;
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonCreatetimer()
+void CLibeventExample_MFCDlg::OnBtnCreatetimer()
 {
 	InitTimer();
 }
@@ -213,7 +207,7 @@ void CLibeventExample_MFCDlg::InitTimer()
 	}
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnClient()
+void CLibeventExample_MFCDlg::OnBtnDisconnClient()
 {
 	if (_currentEventData)
 	{
@@ -343,20 +337,28 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 	eventData->dlg->AppendMsg(tmpStr);
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
+void CLibeventExample_MFCDlg::OnBtnListen()
 {
-	event_base* eventBase = event_base_new();
+	event_config* cfg = event_config_new();
+	evthread_use_windows_threads();
+	event_config_set_num_cpus_hint(cfg, 8);
+	event_config_set_flag(cfg, EVENT_BASE_FLAG_STARTUP_IOCP);
+
+	event_base* eventBase = event_base_new_with_config(cfg);
 	if (!eventBase)
 	{
+		event_config_free(cfg);
 		AppendMsg(L"创建eventBase失败");
 		return;
 	}
+	event_config_free(cfg);
+	cfg = nullptr;
 
+	//创建、绑定、监听socket
 	CString tmpStr;
 	_editPort.GetWindowText(tmpStr);
 	const int port = _wtoi(tmpStr);
 
-	//创建、绑定、监听socket
 	sockaddr_in localAddr = {0};
 	localAddr.sin_family = AF_INET;
 	localAddr.sin_port = htons(port);
@@ -435,7 +437,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonListen()
 	AppendMsg(L"服务端开始监听");
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonStopListen()
+void CLibeventExample_MFCDlg::OnBtnStopListen()
 {
 	if (_listener)
 	{
@@ -498,14 +500,21 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 	}
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
+void CLibeventExample_MFCDlg::OnBtnConnect()
 {
-	event_base* eventBase = event_base_new();
+	event_config* cfg = event_config_new();
+	evthread_use_windows_threads();
+	event_config_set_num_cpus_hint(cfg, 8);
+	event_config_set_flag(cfg, EVENT_BASE_FLAG_STARTUP_IOCP);
+
+	event_base* eventBase = event_base_new_with_config(cfg);
 	if (!eventBase)
 	{
 		AppendMsg(L"创建eventBase失败");
 		return;
 	}
+	event_config_free(cfg);
+	cfg = nullptr;
 
 	// 使用指定的本地IP、端口
 	CString tmpStr;
@@ -612,7 +621,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonConnect()
 	}).detach();
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnectServer()
+void CLibeventExample_MFCDlg::OnBtnDisconnectServer()
 {
 	if (_currentEventData)
 	{
@@ -629,7 +638,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonDisconnectServer()
 	}
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonSendMsg()
+void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
 	thread([&] {
 		if (_currentEventData)
@@ -681,7 +690,7 @@ static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
 	}
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind()
+void CLibeventExample_MFCDlg::OnBtnUdpBind()
 {
 	event_base* eventBase = event_base_new();
 	if (!eventBase)
@@ -734,7 +743,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonUdpBind()
 	AppendMsg(L"UDP启动成功");
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonUdpSendMsg()
+void CLibeventExample_MFCDlg::OnBtnUdpSendMsg()
 {
 	CString tmpStr;
 	_editRemotePort.GetWindowText(tmpStr);
@@ -760,7 +769,7 @@ void CLibeventExample_MFCDlg::OnBnClickedButtonUdpSendMsg()
 	}
 }
 
-void CLibeventExample_MFCDlg::OnBnClickedButtonUdpClose()
+void CLibeventExample_MFCDlg::OnBtnUdpClose()
 {
 	if (_currentSockfd != -1)
 	{
@@ -772,7 +781,8 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 
-	const char* uri = evhttp_request_get_uri(req);// 获取请求uri
+	// http://127.0.0.1:23300/api/getA?q=test&s=some+thing
+	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/getA?q=test&s=some+thing"
 	evhttp_uri* decoded = evhttp_uri_parse(uri);// 解码uri
 	if (!decoded)
 	{
@@ -780,13 +790,13 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 		return;
 	}
 
-	const char* path = evhttp_uri_get_path(decoded); // 获取uri中的path部分
+	const char* path = evhttp_uri_get_path(decoded); // 获取uri中的path部分 "/api/getA"
 	if (!path)
 	{
 		path = "/";
 	}
 
-	const char* query = evhttp_uri_get_query(decoded); // 获取uri中的参数部分
+	const char* query = evhttp_uri_get_query(decoded); // 获取uri中的参数部分 "q=test&s=some+thing"
 	if (!query)
 	{
 		evhttp_send_error(req, HTTP_NOCONTENT, NULL);
@@ -796,8 +806,8 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 	//查询指定参数的值
 	evkeyvalq params = { 0 };
 	evhttp_parse_query_str(query, &params);
-	const char* value = evhttp_find_header(&params, "s");
-	value = evhttp_find_header(&params, "q");
+	const char* value = evhttp_find_header(&params, "s"); // "some thing"
+	value = evhttp_find_header(&params, "q"); // "test"
 
 	// 回复
 	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"感谢Thanks use getA"));
@@ -841,15 +851,22 @@ static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
 	evhttp_send_reply(req, 200, "OK", nullptr);
 }
 
-void CLibeventExample_MFCDlg::OntnHttpServer()
+void CLibeventExample_MFCDlg::OnBtnHttpServer()
 {
-	const char* httpAddr = "0.0.0.0";
-	event_base* eventBase = event_base_new();
+	event_config* cfg = event_config_new();
+	evthread_use_windows_threads();
+	event_config_set_num_cpus_hint(cfg, 8);
+	event_config_set_flag(cfg, EVENT_BASE_FLAG_STARTUP_IOCP);
+
+	event_base* eventBase = event_base_new_with_config(cfg);
 	if (!eventBase)
 	{
+		event_config_free(cfg);
 		AppendMsg(L"创建eventBase失败");
 		return;
 	}
+	event_config_free(cfg);
+	cfg = nullptr;
 
 	_httpServer = evhttp_new(eventBase);
 	if (!_httpServer)
@@ -863,11 +880,72 @@ void CLibeventExample_MFCDlg::OntnHttpServer()
 	_btnHTTPServer.EnableWindow(FALSE);
 	_btnStopHttpServer.EnableWindow(TRUE);
 
+	//创建、绑定、监听socket
 	CString tmpStr;
 	_editPort.GetWindowText(tmpStr);
 	const int port = _wtoi(tmpStr);
 
-	_httpSocket = evhttp_bind_socket_with_handle(_httpServer, httpAddr, port);
+	sockaddr_in localAddr = { 0 };
+	localAddr.sin_family = AF_INET;
+	localAddr.sin_port = htons(port);
+
+	EventData* eventData = new EventData;
+	eventData->dlg = this;
+
+	if (IsUseSSL())
+	{
+		CString exeDir = GetModuleDir();
+		CString serverCrtPath = CombinePath(exeDir, L"../3rd/OpenSSL/server.crt");
+		CString serverKeyPath = CombinePath(exeDir, L"../3rd/OpenSSL/server.key");
+
+		// 引入之前生成好的私钥文件和证书文件
+		ssl_ctx_st* ssl_ctx = SSL_CTX_new(TLS_server_method());
+		if (!ssl_ctx)
+		{
+			AppendMsg(L"ssl_ctx new failed");
+			return;
+		}
+		int res = SSL_CTX_use_certificate_file(ssl_ctx, UnicodeToUTF8(serverCrtPath), SSL_FILETYPE_PEM);
+		if (res != 1)
+		{
+			AppendMsg(L"SSL_CTX_use_certificate_file failed");
+			return;
+		}
+		res = SSL_CTX_use_PrivateKey_file(ssl_ctx, UnicodeToUTF8(serverKeyPath), SSL_FILETYPE_PEM);
+		if (res != 1)
+		{
+			AppendMsg(L"SSL_CTX_use_PrivateKey_file failed");
+			return;
+		}
+		res = SSL_CTX_check_private_key(ssl_ctx);
+		if (res != 1)
+		{
+			AppendMsg(L"SSL_CTX_check_private_key failed");
+			return;
+		}
+
+		eventData->ssl_ctx = ssl_ctx;
+	}
+
+	_listener = evconnlistener_new_bind(eventBase, OnServerEventAccept, eventData,
+		LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
+		(sockaddr*)&localAddr, sizeof(localAddr));
+	if (!_listener)
+	{
+		AppendMsg(L"创建evconnlistener失败");
+
+		event_base_free(eventBase);
+		if (IsUseSSL())
+		{
+			SSL_CTX_free(eventData->ssl_ctx);
+		}
+
+		delete eventData;
+		return;
+	}
+
+	_httpSocket = evhttp_bind_listener(_httpServer, _listener);
+	//_httpSocket = evhttp_bind_socket_with_handle(_httpServer, "0.0.0.0", port);
 	if (!_httpSocket)
 	{
 		AppendMsg(L"创建evhttp_bind_socket失败");

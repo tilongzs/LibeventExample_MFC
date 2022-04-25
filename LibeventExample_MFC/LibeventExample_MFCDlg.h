@@ -47,6 +47,8 @@ private:
 	CEdit _editPort;
 	CEdit _editRemotePort;
 	CButton _btnUseSSL;
+	CButton _btnHTTPServer;
+	CButton _btnStopHttpServer;
 
 	// TCP
 	evconnlistener* _listener = nullptr;
@@ -66,19 +68,16 @@ public:
 	bool IsUseSSL();
 
 private:
-	afx_msg void OnBnClickedButtonDisconnClient();
-	afx_msg void OnBnClickedButtonListen();
-	afx_msg void OnBnClickedButtonCreatetimer();
-	afx_msg void OnBnClickedButtonStopListen();
-	afx_msg void OnBnClickedButtonConnect();
-	afx_msg void OnBnClickedButtonDisconnectServer();
-	afx_msg void OnBnClickedButtonSendMsg();
-	afx_msg void OnBnClickedButtonUdpBind();
-	afx_msg void OnBnClickedButtonUdpSendMsg();	
-	afx_msg void OnBnClickedButtonUdpClose();
-public:
-	CButton _btnHTTPServer;
-	afx_msg void OntnHttpServer();
-	CButton _btnStopHttpServer;
+	afx_msg void OnBtnDisconnClient();
+	afx_msg void OnBtnListen();
+	afx_msg void OnBtnCreatetimer();
+	afx_msg void OnBtnStopListen();
+	afx_msg void OnBtnConnect();
+	afx_msg void OnBtnDisconnectServer();
+	afx_msg void OnBtnSendMsg();
+	afx_msg void OnBtnUdpBind();
+	afx_msg void OnBtnUdpSendMsg();	
+	afx_msg void OnBtnUdpClose();	
+	afx_msg void OnBtnHttpServer();
 	afx_msg void OnBtnStopHttpServer();
 };
