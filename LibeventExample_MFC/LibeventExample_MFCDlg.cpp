@@ -877,6 +877,9 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		return;
 	}
 
+	evhttp_set_max_body_size(_httpServer, 1024 * 1024 * 10);
+	evhttp_set_max_connections(_httpServer, 10000 * 100);
+
 	_btnHTTPServer.EnableWindow(FALSE);
 	_btnStopHttpServer.EnableWindow(TRUE);
 
@@ -966,7 +969,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_cb(_httpServer, "/api/setA", OnHTTP_API_setA, this);
 	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
 	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
-	
+		
 	AppendMsg(L"HTTP 服务端启动");
 	thread([&, eventBase]
 	{
@@ -974,7 +977,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		evhttp_free(_httpServer);
 	}).detach();		
 }
-
 
 void CLibeventExample_MFCDlg::OnBtnStopHttpServer()
 {
