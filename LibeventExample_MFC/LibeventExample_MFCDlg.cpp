@@ -34,7 +34,7 @@ using std::this_thread::get_id;
 #define URL_MAX 4096
 
 #define HTTP_MAX_HEAD_SIZE 1024 * 4
-#define HTTP_MAX_BODY_SIZE 1024 * 1024 * 1024 * 3
+#define HTTP_MAX_BODY_SIZE 1024 * 1024 * 1024
 
 struct EventData
 {
@@ -44,8 +44,22 @@ struct EventData
 	ssl_st* ssl = nullptr;
 };
 
-struct HttpData
+class HttpData
 {
+public:
+	~HttpData()
+	{
+		if (evConn)
+		{
+			evhttp_connection_free(evConn);
+		}
+
+		if (evURI)
+		{
+			evhttp_uri_free(evURI);
+		}
+	}
+
 	CLibeventExample_MFCDlg* dlg = nullptr;
 	evhttp_connection* evConn = nullptr;
 	evhttp_uri* evURI = nullptr;
@@ -1177,6 +1191,7 @@ static void OnHttpResponsePostA(evhttp_request* req, void* arg)
 	}	
 
 	evhttp_connection_free(httpData->evConn);
+	httpData->evConn = nullptr;
 }
 
 void CLibeventExample_MFCDlg::OnBtnHttpPost()
