@@ -31,13 +31,21 @@ using std::this_thread::get_id;
 #define DEFAULT_SOCKET_PORT 23300
 #define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
 #define SINGLE_UDP_PACKAGE_SIZE 65507 // 单个UDP包的最大大小（理论值：65507字节）
+#define URL_MAX 4096
 
 struct EventData
 {
-	CLibeventExample_MFCDlg* dlg;
-	bufferevent* bev;
-	ssl_ctx_st* ssl_ctx;
-	ssl_st* ssl;
+	CLibeventExample_MFCDlg* dlg = nullptr;
+	bufferevent* bev = nullptr;
+	ssl_ctx_st* ssl_ctx = nullptr;
+	ssl_st* ssl = nullptr;
+};
+
+struct HttpData
+{
+	CLibeventExample_MFCDlg* dlg = nullptr;
+	evhttp_connection* evConn = nullptr;
+	evhttp_uri* evURI = nullptr;
 };
 
 CLibeventExample_MFCDlg::CLibeventExample_MFCDlg(CWnd* pParent /*=nullptr*/)
@@ -73,6 +81,7 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_UDP_CLOSE, &CLibeventExample_MFCDlg::OnBtnUdpClose)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER, &CLibeventExample_MFCDlg::OnBtnHttpServer)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER_STOP, &CLibeventExample_MFCDlg::OnBtnStopHttpServer)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_GET, &CLibeventExample_MFCDlg::OnBtnHttpGet)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -287,8 +296,12 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 	event_base* eventBase = evconnlistener_get_base(listener);
 
 	int bufLen = SINGLE_PACKAGE_SIZE;
-	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int));
-	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int));
+	int ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int));
+	ret = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int));
+	linger l;
+	l.l_onoff = 1;
+	l.l_linger = 0;
+	ret = setsockopt(fd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l));
 
 	//构造一个bufferevent
 	bufferevent* bev = nullptr;
@@ -313,7 +326,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 	eventData->bev = bev;
 
 	// 修改读写上限
-	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
+	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
 		eventData->dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
@@ -368,6 +381,17 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 
 	if (IsUseSSL())
 	{
+		/*
+			生成x.509证书
+			首选在安装好openssl的机器上创建私钥文件：server.key
+			> openssl genrsa -out server.key 2048
+			
+			得到私钥文件后我们需要一个证书请求文件：server.csr，将来你可以拿这个证书请求向正规的证书管理机构申请证书			
+			> openssl req -new -key server.key -out server.csr
+			
+			最后我们生成自签名的x.509证书（有效期365天）：server.crt			
+			> openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt
+		*/
 		CString exeDir = GetModuleDir();
 		CString serverCrtPath = CombinePath(exeDir, L"../3rd/OpenSSL/server.crt");
 		CString serverKeyPath = CombinePath(exeDir, L"../3rd/OpenSSL/server.key");
@@ -379,13 +403,13 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 			AppendMsg(L"ssl_ctx new failed");
 			return;
 		}
-		int res = SSL_CTX_use_certificate_file(ssl_ctx, UnicodeToUTF8(serverCrtPath), SSL_FILETYPE_PEM);
+		int res = SSL_CTX_use_certificate_file(ssl_ctx, UnicodeToUTF8(serverCrtPath).c_str(), SSL_FILETYPE_PEM);
 		if (res != 1)
 		{
 			AppendMsg(L"SSL_CTX_use_certificate_file failed");
 			return;
 		}
-		res = SSL_CTX_use_PrivateKey_file(ssl_ctx, UnicodeToUTF8(serverKeyPath), SSL_FILETYPE_PEM);
+		res = SSL_CTX_use_PrivateKey_file(ssl_ctx, UnicodeToUTF8(serverKeyPath).c_str(), SSL_FILETYPE_PEM);
 		if (res != 1)
 		{
 			AppendMsg(L"SSL_CTX_use_PrivateKey_file failed");
@@ -780,37 +804,49 @@ void CLibeventExample_MFCDlg::OnBtnUdpClose()
 static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
-
 	// http://127.0.0.1:23300/api/getA?q=test&s=some+thing
+
+	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
 	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/getA?q=test&s=some+thing"
-	evhttp_uri* decoded = evhttp_uri_parse(uri);// 解码uri
-	if (!decoded)
+	//evhttp_uri* evURI = evhttp_uri_parse(uri);// 解码uri
+	if (!evURI)
 	{
 		evhttp_send_error(req, HTTP_BADREQUEST, NULL);
 		return;
 	}
+// 	char uri[URL_MAX] = {0};
+// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/getA?q=test&s=some+thing"
 
-	const char* path = evhttp_uri_get_path(decoded); // 获取uri中的path部分 "/api/getA"
+	const char* host = evhttp_uri_get_host(evURI);
+	//const char* unixsocket = evhttp_uri_get_unixsocket(evURI);
+	int port = evhttp_uri_get_port(evURI);
+
+	const char* path = evhttp_uri_get_path(evURI); // 获取uri中的path部分 "/api/getA"
 	if (!path)
 	{
 		path = "/";
 	}
 
-	const char* query = evhttp_uri_get_query(decoded); // 获取uri中的参数部分 "q=test&s=some+thing"
-	if (!query)
-	{
-		evhttp_send_error(req, HTTP_NOCONTENT, NULL);
-		return;
-	}
+	const char* query = evhttp_uri_get_query(evURI); // 获取uri中的参数部分 "q=test&s=some+thing"
+	const char* fragment = evhttp_uri_get_fragment(evURI);
 
-	//查询指定参数的值
+
+	// 查询指定参数的值
 	evkeyvalq params = { 0 };
 	evhttp_parse_query_str(query, &params);
 	const char* value = evhttp_find_header(&params, "s"); // "some thing"
 	value = evhttp_find_header(&params, "q"); // "test"
 
+	// 解析请求数据
+	size_t len = evbuffer_get_length(req->input_buffer);
+	if (len > 0)
+	{
+		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+		evbuffer_drain(req->input_buffer, len);
+	}
+
 	// 回复
-	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"感谢Thanks use getA"));
+	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"Thanks use getA").c_str());
 	//evbuffer_add(req->output_buffer, s, strlen(s));
 	evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
 }
@@ -877,8 +913,11 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		return;
 	}
 
+	// 连接参数设置
+	evhttp_set_max_headers_size(_httpServer, 1024);
 	evhttp_set_max_body_size(_httpServer, 1024 * 1024 * 10);
 	evhttp_set_max_connections(_httpServer, 10000 * 100);
+	evhttp_set_timeout(_httpServer, 3);//设置处理请求的超时时间(s)
 
 	_btnHTTPServer.EnableWindow(FALSE);
 	_btnStopHttpServer.EnableWindow(TRUE);
@@ -908,13 +947,13 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 			AppendMsg(L"ssl_ctx new failed");
 			return;
 		}
-		int res = SSL_CTX_use_certificate_file(ssl_ctx, UnicodeToUTF8(serverCrtPath), SSL_FILETYPE_PEM);
+		int res = SSL_CTX_use_certificate_file(ssl_ctx, UnicodeToUTF8(serverCrtPath).c_str(), SSL_FILETYPE_PEM);
 		if (res != 1)
 		{
 			AppendMsg(L"SSL_CTX_use_certificate_file failed");
 			return;
 		}
-		res = SSL_CTX_use_PrivateKey_file(ssl_ctx, UnicodeToUTF8(serverKeyPath), SSL_FILETYPE_PEM);
+		res = SSL_CTX_use_PrivateKey_file(ssl_ctx, UnicodeToUTF8(serverKeyPath).c_str(), SSL_FILETYPE_PEM);
 		if (res != 1)
 		{
 			AppendMsg(L"SSL_CTX_use_PrivateKey_file failed");
@@ -954,9 +993,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		AppendMsg(L"创建evhttp_bind_socket失败");
 		return;
 	}
-
-	//设置处理请求的超时时间(s)
-	evhttp_set_timeout(_httpServer, 3);
+	
 
 	/*
 		URI like http://127.0.0.1:23300/api/getA?q=test&s=some+thing
@@ -988,4 +1025,82 @@ void CLibeventExample_MFCDlg::OnBtnStopHttpServer()
 		_btnHTTPServer.EnableWindow(TRUE);
 		_btnStopHttpServer.EnableWindow(FALSE);
 	}
+}
+
+static void OnHttpReqComplete(evhttp_request* req, void* arg)
+{
+	HttpData* httpData = (HttpData*)arg;
+
+	// 获取数据长度
+	size_t len = evbuffer_get_length(req->input_buffer);
+	if (len > 0)
+	{
+		// 获取数据指针
+		unsigned char* data = evbuffer_pullup(req->input_buffer, len); 
+		char* responseStr = new char[len + 1]{ 0 };
+		memcpy(responseStr, data, len);
+
+		CString strMsg;
+		strMsg.Format(L"收到GetA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
+		httpData->dlg->AppendMsg(strMsg);
+		delete[] responseStr;
+
+		// 清空数据
+		evbuffer_drain(req->input_buffer, len); 
+
+		evhttp_connection_free(httpData->evConn);
+	}
+}
+
+void CLibeventExample_MFCDlg::OnBtnHttpGet()
+{
+	CString tmpStr;
+	_editRemotePort.GetWindowText(tmpStr);
+	const int remotePort = _wtoi(tmpStr);
+
+	CString strURI;
+	strURI.Format(L"http://127.0.0.1:%d/api/getA?q=test&s=some+thing", remotePort);
+	string utf8URI = UnicodeToUTF8(strURI);
+	const char* uri = utf8URI.c_str();
+
+// 	event_config* cfg = event_config_new();
+// 	evthread_use_windows_threads();
+// 	event_config_set_num_cpus_hint(cfg, 8);
+// 	event_config_set_flag(cfg, EVENT_BASE_FLAG_STARTUP_IOCP);
+// 
+// 	event_base* eventBase = event_base_new_with_config(cfg);
+// 	if (!eventBase)
+// 	{
+// 		event_config_free(cfg);
+// 		AppendMsg(L"创建eventBase失败");
+// 		return;
+// 	}
+// 	event_config_free(cfg);
+// 	cfg = nullptr;
+
+	event_base* eventBase = event_base_new();
+
+	HttpData* httpConnData = new HttpData;
+	httpConnData->dlg = this;
+
+	httpConnData->evURI = evhttp_uri_parse(uri);
+	const char* address = evhttp_uri_get_host(httpConnData->evURI);
+	int port = evhttp_uri_get_port(httpConnData->evURI);
+	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
+
+	evhttp_request* req = evhttp_request_new(OnHttpReqComplete, httpConnData);
+
+	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Proxy-Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Host", "localhost");
+	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_GET, "/api/getA?q=test&s=some+thing");
+	evhttp_connection_set_timeout(req->evcon, 3);
+
+	thread([&, eventBase]
+	{
+		event_base_dispatch(eventBase); // 阻塞
+		AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
+
+		event_base_free(eventBase);
+	}).detach();
 }

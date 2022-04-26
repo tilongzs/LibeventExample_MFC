@@ -23,8 +23,9 @@
 #define IDC_BUTTON_UDP_CLOSE            1013
 #define IDC_CHECK_SSL                   1014
 #define IDC_BUTTON_HTTP_SERVER          1015
-#define IDC_BUTTON_HTTP_SERVER2         1016
 #define IDC_BUTTON_HTTP_SERVER_STOP     1016
+#define IDC_BUTTON_HTTP_SERVER2         1017
+#define IDC_BUTTON_HTTP_GET             1017
 
 // Next default values for new objects
 // 

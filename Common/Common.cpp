@@ -57,7 +57,7 @@ wstring S2Unicode(const string& str)
 	}
 }
 
-CStringA UnicodeToUTF8(const CStringW& unicodeStr)
+string UnicodeToUTF8(const CStringW& unicodeStr)
 {
 	char* pMultiBuf = NULL;
 	int nMiltiBufLen = WideCharToMultiByte(CP_UTF8, 0, unicodeStr, -1, pMultiBuf, 0, NULL, NULL);
@@ -67,7 +67,7 @@ CStringA UnicodeToUTF8(const CStringW& unicodeStr)
 
 	WideCharToMultiByte(CP_UTF8, 0, unicodeStr, -1, (char*)pMultiBuf, nMiltiBufLen, NULL, NULL);
 
-	CStringA strTarget(pMultiBuf);
+	string strTarget(pMultiBuf);
 	delete[] pMultiBuf;
 
 	return strTarget;
