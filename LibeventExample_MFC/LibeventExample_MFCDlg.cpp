@@ -846,7 +846,7 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 	}
 
 	// 回复
-	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"Thanks use getA").c_str());
+	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"谢谢！Thanks use getA").c_str());
 	//evbuffer_add(req->output_buffer, s, strlen(s));
 	evhttp_send_reply(req, HTTP_OK, "OK", nullptr);
 }
@@ -992,8 +992,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	{
 		AppendMsg(L"创建evhttp_bind_socket失败");
 		return;
-	}
-	
+	}	
 
 	/*
 		URI like http://127.0.0.1:23300/api/getA?q=test&s=some+thing
@@ -1062,22 +1061,8 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 	strURI.Format(L"http://127.0.0.1:%d/api/getA?q=test&s=some+thing", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
-
-// 	event_config* cfg = event_config_new();
-// 	evthread_use_windows_threads();
-// 	event_config_set_num_cpus_hint(cfg, 8);
-// 	event_config_set_flag(cfg, EVENT_BASE_FLAG_STARTUP_IOCP);
-// 
-// 	event_base* eventBase = event_base_new_with_config(cfg);
-// 	if (!eventBase)
-// 	{
-// 		event_config_free(cfg);
-// 		AppendMsg(L"创建eventBase失败");
-// 		return;
-// 	}
-// 	event_config_free(cfg);
-// 	cfg = nullptr;
-
+		
+	evthread_use_windows_threads();
 	event_base* eventBase = event_base_new();
 
 	HttpData* httpConnData = new HttpData;
