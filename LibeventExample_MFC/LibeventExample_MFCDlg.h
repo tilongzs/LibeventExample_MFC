@@ -82,4 +82,5 @@ private:
 	afx_msg void OnBtnStopHttpServer();
 public:
 	afx_msg void OnBtnHttpGet();
+	afx_msg void OnBtnHttpPost();
 };

@@ -33,6 +33,9 @@ using std::this_thread::get_id;
 #define SINGLE_UDP_PACKAGE_SIZE 65507 // 单个UDP包的最大大小（理论值：65507字节）
 #define URL_MAX 4096
 
+#define HTTP_MAX_HEAD_SIZE 1024 * 4
+#define HTTP_MAX_BODY_SIZE 1024 * 1024 * 1024 * 3
+
 struct EventData
 {
 	CLibeventExample_MFCDlg* dlg = nullptr;
@@ -82,6 +85,7 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER, &CLibeventExample_MFCDlg::OnBtnHttpServer)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_SERVER_STOP, &CLibeventExample_MFCDlg::OnBtnStopHttpServer)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_GET, &CLibeventExample_MFCDlg::OnBtnHttpGet)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_POST, &CLibeventExample_MFCDlg::OnBtnHttpPost)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -830,20 +834,11 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 	const char* query = evhttp_uri_get_query(evURI); // 获取uri中的参数部分 "q=test&s=some+thing"
 	const char* fragment = evhttp_uri_get_fragment(evURI);
 
-
 	// 查询指定参数的值
 	evkeyvalq params = { 0 };
 	evhttp_parse_query_str(query, &params);
 	const char* value = evhttp_find_header(&params, "s"); // "some thing"
 	value = evhttp_find_header(&params, "q"); // "test"
-
-	// 解析请求数据
-	size_t len = evbuffer_get_length(req->input_buffer);
-	if (len > 0)
-	{
-		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
-		evbuffer_drain(req->input_buffer, len);
-	}
 
 	// 回复
 	evbuffer_add_printf(req->output_buffer, UnicodeToUTF8(L"谢谢！Thanks use getA").c_str());
@@ -854,10 +849,76 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	// http://127.0.0.1:23300/api/getA?q=test&s=some+thing
 
-	const char* s = "This is the test buf";
-	evbuffer_add(req->output_buffer, s, strlen(s));
-	evhttp_send_reply(req, 200, "OK", nullptr);
+	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
+	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/getA?q=test&s=some+thing"
+	//evhttp_uri* evURI = evhttp_uri_parse(uri);// 解码uri
+	if (!evURI)
+	{
+		evhttp_send_error(req, HTTP_BADREQUEST, NULL);
+		return;
+	}
+	// 	char uri[URL_MAX] = {0};
+	// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/getA?q=test&s=some+thing"
+
+	const char* host = evhttp_uri_get_host(evURI);
+	//const char* unixsocket = evhttp_uri_get_unixsocket(evURI);
+	int port = evhttp_uri_get_port(evURI);
+
+	const char* path = evhttp_uri_get_path(evURI); // 获取uri中的path部分 "/api/getA"
+	if (!path)
+	{
+		path = "/";
+	}
+
+	const char* query = evhttp_uri_get_query(evURI); // 获取uri中的参数部分 "q=test&s=some+thing"
+	const char* fragment = evhttp_uri_get_fragment(evURI);
+
+	// 查询指定参数的值
+	evkeyvalq params = { 0 };
+	evhttp_parse_query_str(query, &params);
+	const char* value = evhttp_find_header(&params, "s"); // "some thing"
+	value = evhttp_find_header(&params, "q"); // "test"
+
+	// 获取Headers
+	evkeyvalq* headers = evhttp_request_get_input_headers(req);
+	value = evhttp_find_header(headers, "Host");
+	value = evhttp_find_header(headers, "BodySize");
+	size_t bodySize = atoi(value);
+
+	// 获取数据长度
+	size_t len = evbuffer_get_length(req->input_buffer);
+	if (len != bodySize)
+	{
+		evhttp_send_reply(req, HTTP_NOCONTENT, "wrong bodySize", nullptr);
+		CString strMsg;
+		strMsg.Format(L"bodySize:%u 但实际收到PostA接口%u字节数据", bodySize, len);
+		dlg->AppendMsg(strMsg);
+		return;
+	}
+
+	if (len > 0)
+	{
+		// 获取数据指针
+		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+
+		// 处理数据...
+
+		// 清空数据
+		evbuffer_drain(req->input_buffer, len);
+	}
+
+	// 回复
+	const size_t bufSize = 65535 * 10;
+	char* postBuf = new char[bufSize] {'B'};
+	evbuffer_add(req->output_buffer, postBuf, bufSize);
+	delete[] postBuf;
+	evhttp_send_reply(req, HTTP_OK, nullptr, nullptr);
+
+	CString strMsg;
+	strMsg.Format(L"收到PostA接口%u字节数据", len);
+	dlg->AppendMsg(strMsg);
 }
 
 static void OnHTTP_API_setA(evhttp_request* req, void* arg)
@@ -914,8 +975,8 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	}
 
 	// 连接参数设置
-	evhttp_set_max_headers_size(_httpServer, 1024);
-	evhttp_set_max_body_size(_httpServer, 1024 * 1024 * 10);
+	evhttp_set_max_headers_size(_httpServer, HTTP_MAX_HEAD_SIZE);
+	evhttp_set_max_body_size(_httpServer, HTTP_MAX_BODY_SIZE);
 	evhttp_set_max_connections(_httpServer, 10000 * 100);
 	evhttp_set_timeout(_httpServer, 3);//设置处理请求的超时时间(s)
 
@@ -1000,7 +1061,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		The second entry is: key="s", value="some thing"
 	*/		
 	evhttp_set_cb(_httpServer, "/api/getA", OnHTTP_API_getA, this);
-
 	evhttp_set_cb(_httpServer, "/api/postA", OnHTTP_API_postA, this);
 	evhttp_set_cb(_httpServer, "/api/setA", OnHTTP_API_setA, this);
 	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
@@ -1026,7 +1086,7 @@ void CLibeventExample_MFCDlg::OnBtnStopHttpServer()
 	}
 }
 
-static void OnHttpReqComplete(evhttp_request* req, void* arg)
+static void OnHttpResponseGetA(evhttp_request* req, void* arg)
 {
 	HttpData* httpData = (HttpData*)arg;
 
@@ -1046,9 +1106,9 @@ static void OnHttpReqComplete(evhttp_request* req, void* arg)
 
 		// 清空数据
 		evbuffer_drain(req->input_buffer, len); 
-
-		evhttp_connection_free(httpData->evConn);
 	}
+
+	evhttp_connection_free(httpData->evConn);
 }
 
 void CLibeventExample_MFCDlg::OnBtnHttpGet()
@@ -1073,18 +1133,96 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 	int port = evhttp_uri_get_port(httpConnData->evURI);
 	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
 
-	evhttp_request* req = evhttp_request_new(OnHttpReqComplete, httpConnData);
+	evhttp_request* req = evhttp_request_new(OnHttpResponseGetA, httpConnData);
 
-	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
-	evhttp_add_header(req->output_headers, "Proxy-Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Connection", "keep-alive");	
 	evhttp_add_header(req->output_headers, "Host", "localhost");
 	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_GET, "/api/getA?q=test&s=some+thing");
 	evhttp_connection_set_timeout(req->evcon, 3);
-
+	
 	thread([&, eventBase]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
+
+		event_base_free(eventBase);
+	}).detach();
+}
+
+static void OnHttpResponsePostA(evhttp_request* req, void* arg)
+{
+	HttpData* httpData = (HttpData*)arg;
+	if (req)
+	{
+		// 获取数据长度
+		size_t len = evbuffer_get_length(req->input_buffer);
+		if (len > 0)
+		{
+			// 获取数据指针
+			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+
+			// 处理数据...
+
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+		}
+
+		CString strMsg;
+		strMsg.Format(L"收到PostA接口回复%u字节数据", len);
+		httpData->dlg->AppendMsg(strMsg);
+	}
+	else
+	{
+		httpData->dlg->AppendMsg(L"PostA失败");
+	}	
+
+	evhttp_connection_free(httpData->evConn);
+}
+
+void CLibeventExample_MFCDlg::OnBtnHttpPost()
+{
+	CString tmpStr;
+	_editRemotePort.GetWindowText(tmpStr);
+	const int remotePort = _wtoi(tmpStr);
+
+	CString strURI;
+	strURI.Format(L"http://127.0.0.1:%d/api/getA?q=test&s=some+thing", remotePort);
+	string utf8URI = UnicodeToUTF8(strURI);
+	const char* uri = utf8URI.c_str();
+
+	evthread_use_windows_threads();
+	event_base* eventBase = event_base_new();
+
+	HttpData* httpConnData = new HttpData;
+	httpConnData->dlg = this;
+
+	httpConnData->evURI = evhttp_uri_parse(uri);
+	const char* address = evhttp_uri_get_host(httpConnData->evURI);
+	int port = evhttp_uri_get_port(httpConnData->evURI);
+	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
+
+	evhttp_request* req = evhttp_request_new(OnHttpResponsePostA, httpConnData);
+
+	evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
+	evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
+
+	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Host", "localhost");
+
+	const size_t bufSize = 1024 * 1024; // 单次最大1GB（1024 * 1024 * 1024）
+	evhttp_add_header(req->output_headers, "BodySize", Int2Str(bufSize).c_str());
+
+	char* postBuf = new char[bufSize]{'A'};
+	evbuffer_add(req->output_buffer, postBuf, bufSize);
+	delete[] postBuf;	
+
+	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_POST, "/api/postA?q=test&s=some+thing");
+	evhttp_connection_set_timeout(req->evcon, 30);
+
+	thread([&, eventBase]
+	{
+		event_base_dispatch(eventBase); // 阻塞
+		AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
 
 		event_base_free(eventBase);
 	}).detach();

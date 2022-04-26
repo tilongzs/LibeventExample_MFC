@@ -1,6 +1,20 @@
 ﻿#include "Common.h"
 #include <stringapiset.h>
 #include <Shlwapi.h>
+#include <memory>
+
+template<typename ... Args>
+std::string static str_format(const std::string& format, Args ... args)
+{
+	auto size_buf = std::snprintf(nullptr, 0, format.c_str(), args ...) + 1;
+	std::unique_ptr<char[]> buf(new char[size_buf]);
+
+	if (!buf)
+		return std::string("");
+
+	std::snprintf(buf.get(), size_buf, format.c_str(), args ...);
+	return std::string(buf.get(), buf.get() + size_buf - 1);
+}
 
 wstring UTF8ToUnicode(const char* utf8Str)
 {
@@ -166,4 +180,16 @@ CString CombinePath(const CString& folder, const CString& extraPath)
 	wcscpy_s(buf, folder);
 	PathAppend(buf, extraPath);
 	return buf;
+}
+
+string Int2Str(const int& num)
+{
+	return str_format("%d", num);
+}
+
+CString Int2CStr(const int& num)
+{
+	CString str;
+	str.Format(L"%d", num);
+	return str.Trim();
 }

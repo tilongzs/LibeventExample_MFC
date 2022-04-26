@@ -19,3 +19,5 @@ void ConvertIPPort(DWORD ip, int port, SOCKADDR_IN& addr);	// 本地字节顺序
 
 CString GetModuleDir();
 CString CombinePath(const CString& folder, const CString& extraPath);
+
+string Int2Str(const int& num);
