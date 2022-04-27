@@ -83,4 +83,5 @@ private:
 public:
 	afx_msg void OnBtnHttpGet();
 	afx_msg void OnBtnHttpPost();
+	afx_msg void OnBtnHttpPut();
 };
