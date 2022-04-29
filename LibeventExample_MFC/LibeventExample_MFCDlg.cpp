@@ -34,7 +34,7 @@ using namespace std;
 #define URL_MAX 4096
 
 #define HTTP_MAX_HEAD_SIZE 1024 * 4
-#define HTTP_MAX_BODY_SIZE 1024 * 1024 * 1024
+#define HTTP_MAX_BODY_SIZE 1024 * 1024 * 1024 * 2 // 不要超过2GB
 
 struct EventData
 {
@@ -1443,6 +1443,11 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 
 	struct stat st;
 	stat(strFilePath.c_str(), &st); // 获取文件信息
+	if (st.st_size > HTTP_MAX_BODY_SIZE)
+	{
+		AppendMsg(L"文件体积过大");
+		return;
+	}
 
 	CString strURI;
 	strURI.Format(L"http://127.0.0.1:%d/api/postFileA?q=test&s=some+thing", remotePort);
@@ -1461,7 +1466,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
 	evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
 	evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
-	evhttp_connection_set_timeout(httpConnData->evConn, 3);// 设置超时时间(s)
+	//evhttp_connection_set_timeout(httpConnData->evConn, 30);// 可以不设置超时时间；设置超时时间，文件越大，需要的时间越长(s)
 
 	evhttp_request* req = evhttp_request_new(OnHttpResponsePostFileA, httpConnData);
 
