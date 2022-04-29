@@ -6,18 +6,17 @@
 #include "Common/Common.h"
 #include <afxsock.h>
 
-#include<sys/types.h>  
-#include<errno.h>  
+#include <sys/types.h>  
+#include <errno.h>  
 #include <corecrt_io.h>
 #include <thread>
 #include <chrono>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 // vcpkg管理
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include <event2/keyvalq_struct.h>
-#include <event2/http_struct.h>
-#include <fcntl.h>
 /*******************************/
 
 using namespace std;
@@ -34,7 +33,7 @@ using namespace std;
 #define URL_MAX 4096
 
 #define HTTP_MAX_HEAD_SIZE 1024 * 4
-#define HTTP_MAX_BODY_SIZE 1024 * 1024 * 1024 * 2 // 不要超过2GB
+static const INT64 HTTP_MAX_BODY_SIZE = (INT64)1024 * 1024 * 1024 * 2 - 1024; // 不要超过2GB
 
 struct EventData
 {
@@ -1429,20 +1428,19 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 
 	// 加载文件
 	/*
-	* _sopen_s说明
+	* _wsopen_s说明
 	https://docs.microsoft.com/zh-cn/previous-versions/w64k0ytk(v=vs.110)?redirectedfrom=MSDN
-	*/
-	string strFilePath = UnicodeToMB(dlg.GetPathName());	
+	*/	
 	int readFile = NULL;
-	int ret = _sopen_s(&readFile, strFilePath.c_str(), _O_RDONLY | _O_BINARY, _SH_DENYWR, _S_IREAD);
+	int ret = _wsopen_s(&readFile, dlg.GetPathName(), _O_RDONLY | _O_BINARY, _SH_DENYWR, _S_IREAD); // 使用宽字节接口解决中文问题
 	if (0 != ret)
 	{
 		AppendMsg(L"读取文件失败");
 		return;
 	}
 
-	struct stat st;
-	stat(strFilePath.c_str(), &st); // 获取文件信息
+	struct _stat64 st;
+	_wstat64(dlg.GetPathName(), &st); // 获取文件信息
 	if (st.st_size > HTTP_MAX_BODY_SIZE)
 	{
 		AppendMsg(L"文件体积过大");
@@ -1475,13 +1473,13 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	evhttp_add_header(req->output_headers, "Host", "localhost");
 
 	// 自定义Header
-	const size_t fileSize = st.st_size; // 单次最大1GB（1024 * 1024 * 1024）
+	const size_t fileSize = st.st_size; // 单次最大2GB（1024 * 1024 * 1024 - 1024）
 	string strFileName = UnicodeToUTF8(dlg.GetFileName()); // 文件名使用UTF-8存储
 	evhttp_add_header(req->output_headers, "FileName", strFileName.c_str());
 	evhttp_add_header(req->output_headers, "FileSize", Int2Str(fileSize).c_str());
 
 	// 文件数据
-	ret = evbuffer_add_file(req->output_buffer, readFile, 0, -1);
+	ret = evbuffer_add_file(req->output_buffer, readFile, 0, fileSize);
 	if (0 != ret)
 	{
 		AppendMsg(L"evbuffer_add_file失败");
