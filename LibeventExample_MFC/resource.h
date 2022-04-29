@@ -26,8 +26,9 @@
 #define IDC_BUTTON_HTTP_SERVER_STOP     1016
 #define IDC_BUTTON_HTTP_GET             1017
 #define IDC_BUTTON_HTTP_POST            1018
-#define IDC_BUTTON_HTTP_SET             1019
 #define IDC_BUTTON_HTTP_PUT             1019
+#define IDC_BUTTON_HTTP_POST2           1020
+#define IDC_BUTTON_HTTP_POST_FILE       1020
 
 // Next default values for new objects
 // 

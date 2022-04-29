@@ -17,6 +17,7 @@
 #include <openssl/err.h>
 #include <event2/keyvalq_struct.h>
 #include <event2/http_struct.h>
+#include <fcntl.h>
 /*******************************/
 
 using namespace std;
@@ -119,6 +120,7 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_GET, &CLibeventExample_MFCDlg::OnBtnHttpGet)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_POST, &CLibeventExample_MFCDlg::OnBtnHttpPost)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_PUT, &CLibeventExample_MFCDlg::OnBtnHttpPut)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_POST_FILE, &CLibeventExample_MFCDlg::OnBtnHttpPostFile)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -883,10 +885,10 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
-	// http://127.0.0.1:23300/api/getA?q=test&s=some+thing
+	// http://127.0.0.1:23300/api/postA?q=test&s=some+thing
 
 	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
-	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/getA?q=test&s=some+thing"
+	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/postA?q=test&s=some+thing"
 	//evhttp_uri* evURI = evhttp_uri_parse(uri);// 解码uri
 	if (!evURI)
 	{
@@ -894,9 +896,9 @@ static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 		return;
 	}
 	// 	char uri[URL_MAX] = {0};
-	// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/getA?q=test&s=some+thing"
+	// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/posttA?q=test&s=some+thing"
 
-	const char* path = evhttp_uri_get_path(evURI); // 获取uri中的path部分 "/api/getA"
+	const char* path = evhttp_uri_get_path(evURI); // 获取uri中的path部分 "/api/postA"
 	if (!path)
 	{
 		path = "/";
@@ -939,6 +941,9 @@ static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 		evbuffer_drain(req->input_buffer, len);
 	}
 
+	// 模拟时延/超时
+	//this_thread::sleep_for(chrono::seconds(5));
+
 	// 回复
 	const size_t bufSize = 65535 * 10;
 	char* postBuf = new char[bufSize] {'B'};
@@ -950,6 +955,81 @@ static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 	strMsg.Format(L"收到PostA接口%u字节数据", len);
 	dlg->AppendMsg(strMsg);
 }
+
+static void OnHTTP_API_postFileA(evhttp_request* req, void* arg)
+{
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	// http://127.0.0.1:23300/api/postFileA?q=test&s=some+thing
+
+	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
+	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/postFileA?q=test&s=some+thing"
+	//evhttp_uri* evURI = evhttp_uri_parse(uri);// 解码uri
+	if (!evURI)
+	{
+		evhttp_send_error(req, HTTP_BADREQUEST, NULL);
+		return;
+	}
+	// 	char uri[URL_MAX] = {0};
+	// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/postFileA?q=test&s=some+thing"
+
+	const char* path = evhttp_uri_get_path(evURI); // 获取uri中的path部分 "/api/postFileA"
+	if (!path)
+	{
+		path = "/";
+	}
+
+	const char* query = evhttp_uri_get_query(evURI); // 获取uri中的参数部分 "q=test&s=some+thing"
+	const char* fragment = evhttp_uri_get_fragment(evURI);
+
+	// 查询指定参数的值
+	evkeyvalq params = { 0 };
+	evhttp_parse_query_str(query, &params);
+	const char* value = evhttp_find_header(&params, "s"); // "some thing"
+	value = evhttp_find_header(&params, "q"); // "test"
+
+	// 获取Headers
+	evkeyvalq* headers = evhttp_request_get_input_headers(req);
+	value = evhttp_find_header(headers, "FileSize");
+	size_t fileSize = atoi(value);
+	wstring fileName = UTF8ToUnicode(evhttp_find_header(headers, "FileName"));
+
+	// 获取数据长度
+	size_t len = evbuffer_get_length(req->input_buffer);
+ 	if (len != fileSize)
+ 	{
+ 		evhttp_send_reply(req, HTTP_NOCONTENT, "wrong bodySize", nullptr);
+ 		CString strMsg;
+ 		strMsg.Format(L"fileName:%s fileSize:%u 但实际收到PostFileA接口%u字节数据", fileName.c_str(), fileSize, len);
+ 		dlg->AppendMsg(strMsg);
+ 		return;
+ 	}
+
+	if (len > 0)
+	{
+		// 获取数据指针
+		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+
+		// 处理数据...
+
+		// 清空数据
+		evbuffer_drain(req->input_buffer, len);
+	}
+
+	// 模拟时延/超时
+	//this_thread::sleep_for(chrono::seconds(5));
+
+	// 回复
+	const size_t bufSize = 65535 * 10;
+	char* postBuf = new char[bufSize] {'B'};
+	evbuffer_add(req->output_buffer, postBuf, bufSize);
+	delete[] postBuf;
+	evhttp_send_reply(req, HTTP_OK, nullptr, nullptr);
+
+	CString strMsg;
+	strMsg.Format(L"收到PostFileA接口 %s %u字节数据", fileName.c_str(), len);
+	dlg->AppendMsg(strMsg);
+}
+
 
 static void OnHTTP_API_putA(evhttp_request* req, void* arg)
 {
@@ -1125,6 +1205,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	*/		
 	evhttp_set_cb(_httpServer, "/api/getA", OnHTTP_API_getA, this);
 	evhttp_set_cb(_httpServer, "/api/postA", OnHTTP_API_postA, this);
+	evhttp_set_cb(_httpServer, "/api/postFileA", OnHTTP_API_postFileA, this);
 	evhttp_set_cb(_httpServer, "/api/putA", OnHTTP_API_putA, this);
 	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
 	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
@@ -1244,7 +1325,7 @@ static void OnHttpResponsePostA(evhttp_request* req, void* arg)
 	}	
 
 	// 主动断开与服务器连接
-	httpData->Free();
+	//httpData->Free();
 }
 
 void CLibeventExample_MFCDlg::OnBtnHttpPost()
@@ -1270,6 +1351,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
 	evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
 	evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
+	evhttp_connection_set_timeout(httpConnData->evConn, 3);// 设置超时时间(s)
 
 	evhttp_request* req = evhttp_request_new(OnHttpResponsePostA, httpConnData);
 
@@ -1297,6 +1379,122 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 		delete httpConnData;
 		event_base_free(eventBase);		
 	}).detach();
+}
+
+static void OnHttpResponsePostFileA(evhttp_request* req, void* arg)
+{
+	HttpData* httpData = (HttpData*)arg;
+	if (req)
+	{
+		// 获取数据长度
+		size_t len = evbuffer_get_length(req->input_buffer);
+		if (len > 0)
+		{
+			// 获取数据指针
+			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+
+			// 处理数据...
+
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+		}
+		evhttp_request_free(req);
+
+		CString strMsg;
+		strMsg.Format(L"收到PostFileA接口回复%u字节数据", len);
+		httpData->dlg->AppendMsg(strMsg);
+	}
+	else
+	{
+		httpData->dlg->AppendMsg(L"PostFileA失败");
+	}
+
+	// 主动断开与服务器连接
+	//httpData->Free();
+}
+
+void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
+{
+	CString tmpStr;
+	_editRemotePort.GetWindowText(tmpStr);
+	const int remotePort = _wtoi(tmpStr);
+
+	CFileDialog dlg(TRUE,NULL,NULL, OFN_FILEMUSTEXIST,
+		_T("All Files (*.*)|*.*||"),
+		NULL);
+	if (dlg.DoModal() != IDOK)
+	{
+		return;
+	}
+
+	// 加载文件
+	/*
+	* _sopen_s说明
+	https://docs.microsoft.com/zh-cn/previous-versions/w64k0ytk(v=vs.110)?redirectedfrom=MSDN
+	*/
+	string strFilePath = UnicodeToMB(dlg.GetPathName());	
+	int readFile = NULL;
+	int ret = _sopen_s(&readFile, strFilePath.c_str(), _O_RDONLY | _O_BINARY, _SH_DENYWR, _S_IREAD);
+	if (0 != ret)
+	{
+		AppendMsg(L"读取文件失败");
+		return;
+	}
+
+	struct stat st;
+	stat(strFilePath.c_str(), &st); // 获取文件信息
+
+	CString strURI;
+	strURI.Format(L"http://127.0.0.1:%d/api/postFileA?q=test&s=some+thing", remotePort);
+	string utf8URI = UnicodeToUTF8(strURI);
+	const char* uri = utf8URI.c_str();
+
+	evthread_use_windows_threads();
+	event_base* eventBase = event_base_new();
+
+	HttpData* httpConnData = new HttpData;
+	httpConnData->dlg = this;
+
+	httpConnData->evURI = evhttp_uri_parse(uri);
+	const char* address = evhttp_uri_get_host(httpConnData->evURI);
+	int port = evhttp_uri_get_port(httpConnData->evURI);
+	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
+	evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
+	evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
+	evhttp_connection_set_timeout(httpConnData->evConn, 3);// 设置超时时间(s)
+
+	evhttp_request* req = evhttp_request_new(OnHttpResponsePostFileA, httpConnData);
+
+	// 标准Header
+	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Host", "localhost");
+
+	// 自定义Header
+	const size_t fileSize = st.st_size; // 单次最大1GB（1024 * 1024 * 1024）
+	string strFileName = UnicodeToUTF8(dlg.GetFileName()); // 文件名使用UTF-8存储
+	evhttp_add_header(req->output_headers, "FileName", strFileName.c_str());
+	evhttp_add_header(req->output_headers, "FileSize", Int2Str(fileSize).c_str());
+
+	// 文件数据
+	ret = evbuffer_add_file(req->output_buffer, readFile, 0, -1);
+	if (0 != ret)
+	{
+		AppendMsg(L"evbuffer_add_file失败");
+		event_base_free(eventBase);
+		return;
+	}
+
+	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_POST, "/api/postFileA?q=test&s=some+thing");
+
+	thread([&, eventBase, httpConnData]
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
+
+			// 先断开连接，后释放eventBase
+			delete httpConnData;
+			event_base_free(eventBase);
+		}).detach();
 }
 
 static void OnHttpResponsePutA(evhttp_request* req, void* arg)
@@ -1412,3 +1610,4 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 
 	}).detach();
 }
+

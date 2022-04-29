@@ -87,6 +87,25 @@ string UnicodeToUTF8(const CStringW& unicodeStr)
 	return strTarget;
 }
 
+string UnicodeToMB(const CStringW& unicodeStr)
+{
+	int len = WideCharToMultiByte(CP_ACP, 0, unicodeStr, -1, NULL, 0, NULL, NULL);
+	if (len == 0)
+	{
+		return "";
+	}
+
+	char* buffer = new char[len + 1];
+	memset(buffer, 0, len + 1);
+
+	WideCharToMultiByte(CP_ACP, 0, unicodeStr, -1, (char*)buffer, len, NULL, NULL);
+
+	string strTarget(buffer);
+	delete[] buffer;
+
+	return strTarget;
+}
+
 bool IsUTF8(const char* str, size_t length)
 {
 	unsigned long nBytes = 0;//UFT8可用1-6个字节编码,ASCII用一个字节
