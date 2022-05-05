@@ -1095,6 +1095,18 @@ static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
 	evhttp_send_reply(req, 200, "OK", nullptr);
 }
 
+static bufferevent* OnHTTPSetBev(struct event_base* base, void* arg)
+{
+	EventData* eventData = (EventData*)arg;
+
+	eventData->bev = bufferevent_openssl_socket_new(base,
+		-1,
+		SSL_new(eventData->ssl_ctx),
+		BUFFEREVENT_SSL_ACCEPTING,
+		BEV_OPT_CLOSE_ON_FREE);
+	return eventData->bev;
+}
+
 void CLibeventExample_MFCDlg::OnBtnHttpServer()
 {
 	event_config* cfg = event_config_new();
@@ -1155,10 +1167,11 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 			AppendMsg(L"ssl_ctx new failed");
 			return;
 		}
-		int res = SSL_CTX_use_certificate_file(ssl_ctx, UnicodeToUTF8(serverCrtPath).c_str(), SSL_FILETYPE_PEM);
+
+		int res = SSL_CTX_use_certificate_chain_file(ssl_ctx, UnicodeToUTF8(serverCrtPath).c_str());
 		if (res != 1)
 		{
-			AppendMsg(L"SSL_CTX_use_certificate_file failed");
+			AppendMsg(L"SSL_CTX_use_certificate_chain_file failed");
 			return;
 		}
 		res = SSL_CTX_use_PrivateKey_file(ssl_ctx, UnicodeToUTF8(serverKeyPath).c_str(), SSL_FILETYPE_PEM);
@@ -1175,27 +1188,11 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		}
 
 		eventData->ssl_ctx = ssl_ctx;
+
+		evhttp_set_bevcb(_httpServer, OnHTTPSetBev, eventData);
 	}
 
-	_listener = evconnlistener_new_bind(eventBase, OnServerEventAccept, eventData,
-		LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
-		(sockaddr*)&localAddr, sizeof(localAddr));
-	if (!_listener)
-	{
-		AppendMsg(L"创建evconnlistener失败");
-
-		event_base_free(eventBase);
-		if (IsUseSSL())
-		{
-			SSL_CTX_free(eventData->ssl_ctx);
-		}
-
-		delete eventData;
-		return;
-	}
-
-	_httpSocket = evhttp_bind_listener(_httpServer, _listener);
-	//_httpSocket = evhttp_bind_socket_with_handle(_httpServer, "0.0.0.0", port);
+	_httpSocket = evhttp_bind_socket_with_handle(_httpServer, "0.0.0.0", port);
 	if (!_httpSocket)
 	{
 		AppendMsg(L"创建evhttp_bind_socket失败");
@@ -1620,7 +1617,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 	}).detach();
 }
 
-
 static void OnHttpResponseDelA(evhttp_request* req, void* arg)
 {
 	HttpData* httpData = (HttpData*)arg;
@@ -1651,103 +1647,6 @@ static void OnHttpResponseDelA(evhttp_request* req, void* arg)
 	httpData->Free();
 }
 
-static int add_cert_for_store(X509_STORE* store, const TCHAR* name)
-{
-	HCERTSTORE sys_store = NULL;
-	PCCERT_CONTEXT ctx = NULL;
-	int r = 0;
-
-// 	sys_store = CertOpenSystemStore(0, name);
-// 	if (!sys_store) 
-// 	{
-// 		return -1;
-// 	}
-// 	while ((ctx = CertEnumCertificatesInStore(sys_store, ctx))) 
-// 	{
-// 		X509* x509 = d2i_X509(NULL, (unsigned char const**)&ctx->pbCertEncoded,
-// 			ctx->cbCertEncoded);
-// 		if (x509) 
-// 		{
-// 			X509_STORE_add_cert(store, x509);
-// 			X509_free(x509);
-// 		}
-// 		else 
-// 		{
-// 			r = -1;			
-// 			break;
-// 		}
-// 	}
-// 	CertCloseStore(sys_store, 0);
-	return r;
-}
-
-static int cert_verify_callback(X509_STORE_CTX* x509_ctx, void* arg)
-{
-	// 参照https-client.c
-
-	char cert_str[256];
-	const char* host = (const char*)arg;
-	const char* res_str = "X509_verify_cert failed";
-	//HostnameValidationResult res = Error;
-
-	/* This is the function that OpenSSL would call if we hadn't called
-	 * SSL_CTX_set_cert_verify_callback().  Therefore, we are "wrapping"
-	 * the default functionality, rather than replacing it. */
-	int ok_so_far = 0;
-
-	X509* server_cert = NULL;
-
-// 	if (ignore_cert) {
-// 		return 1;
-// 	}
-
-// 	ok_so_far = X509_verify_cert(x509_ctx);
-// 
-// 	server_cert = X509_STORE_CTX_get_current_cert(x509_ctx);
-
-// 	if (ok_so_far) {
-// 		res = validate_hostname(host, server_cert);
-// 
-// 		switch (res) {
-// 		case MatchFound:
-// 			res_str = "MatchFound";
-// 			break;
-// 		case MatchNotFound:
-// 			res_str = "MatchNotFound";
-// 			break;
-// 		case NoSANPresent:
-// 			res_str = "NoSANPresent";
-// 			break;
-// 		case MalformedCertificate:
-// 			res_str = "MalformedCertificate";
-// 			break;
-// 		case Error:
-// 			res_str = "Error";
-// 			break;
-// 		default:
-// 			res_str = "WTF!";
-// 			break;
-// 		}
-// 	}
-
-// 	X509_NAME_oneline(X509_get_subject_name(server_cert),
-// 		cert_str, sizeof(cert_str));
-
-// 	if (res == MatchFound) {
-// 		printf("https server '%s' has this certificate, "
-// 			"which looks good to me:\n%s\n",
-// 			host, cert_str);
-// 		return 1;
-// 	}
-// 	else {
-// 		printf("Got '%s' for hostname '%s' and certificate:\n%s\n",
-// 			res_str, host, cert_str);
-// 		return 0;
-// 	}
-
-	return true;
-}
-
 void CLibeventExample_MFCDlg::OnBtnHttpDel()
 {
 	CString tmpStr;
@@ -1762,46 +1661,58 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 	evthread_use_windows_threads();
 	event_base* eventBase = event_base_new();
 
-	HttpData* httpConnData = new HttpData;
-	httpConnData->dlg = this;
+	HttpData* httpData = new HttpData;
+	httpData->dlg = this;
 
-	httpConnData->evURI = evhttp_uri_parse(uri);
-	const char* host = evhttp_uri_get_host(httpConnData->evURI);
-	int port = evhttp_uri_get_port(httpConnData->evURI);
+	httpData->evURI = evhttp_uri_parse(uri);
+	const char* host = evhttp_uri_get_host(httpData->evURI);
+	int port = evhttp_uri_get_port(httpData->evURI);
 
-	httpConnData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
-	if (httpConnData->bev == NULL)
+	if (IsUseSSL())
+	{
+		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
+		httpData->ssl = SSL_new(httpData->ssl_ctx);
+		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	}
+	else
+	{
+		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+	}	
+	if (httpData->bev == NULL)
 	{
 		AppendMsg(L"bev创建失败");
-		delete httpConnData;
+		delete httpData;
 		return;
 	}
 
-	httpConnData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpConnData->bev, host, port);
-	if (httpConnData->evConn == NULL)
+	bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+
+	httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
+	if (httpData->evConn == NULL)
 	{
 		AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
-		delete httpConnData;
+		delete httpData;
 		return;
 	}
 
-	evhttp_request* req = evhttp_request_new(OnHttpResponseDelA, httpConnData);
+	evhttp_request* req = evhttp_request_new(OnHttpResponseDelA, httpData);
 	if (req == NULL)
 	{
 		AppendMsg(L"evhttp_request_new失败");
-		delete httpConnData;
+		delete httpData;
 		return;
 	}
 
-	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_GET, "/api/delA?q=test&s=some+thing");
+	evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_GET, "/api/delA?q=test&s=some+thing");
 
-	thread([&, eventBase, httpConnData]
+	thread([&, eventBase, httpData]
 		{
 			event_base_dispatch(eventBase); // 阻塞
 			AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
 
 			// 先断开连接，后释放eventBase
-			delete httpConnData;
+			delete httpData;
 			event_base_free(eventBase);
 		}).detach();
 }
