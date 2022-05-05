@@ -38,13 +38,27 @@ static const INT64 HTTP_MAX_BODY_SIZE = (INT64)1024 * 1024 * 1024 * 2 - 1024; //
 
 struct EventData
 {
+public:
+	~EventData()
+	{
+		if (bev)
+		{
+			bufferevent_free(bev);
+		}
+
+		if (ssl_ctx)
+		{
+			SSL_CTX_free(ssl_ctx);
+		}
+	}
+
 	CLibeventExample_MFCDlg* dlg = nullptr;
 	bufferevent* bev = nullptr;
 	ssl_ctx_st* ssl_ctx = nullptr;
 	ssl_st* ssl = nullptr;
 };
 
-class HttpData
+struct HttpData
 {
 public:
 	~HttpData()
@@ -65,6 +79,12 @@ public:
 		{
 			evhttp_uri_free(evURI);
 			evURI = nullptr;
+		}
+
+		if (ssl_ctx)
+		{
+			SSL_CTX_free(ssl_ctx);
+			ssl_ctx = nullptr;
 		}
 
 		if (req)
@@ -274,7 +294,6 @@ void CLibeventExample_MFCDlg::OnBtnDisconnClient()
 		closesocket(fd);
 		bufferevent_setfd(_currentEventData->bev, -1);
 		//bufferevent_replacefd(_currentBufferevent, -1);// libevent 2.2.0
-		bufferevent_free(_currentEventData->bev);
 	}
 }
 
@@ -315,7 +334,6 @@ static void OnServerEvent(bufferevent* bev, short events, void* param)
 		{
 			SSL_shutdown(eventData->ssl);
 		}
-		bufferevent_free(bev);
 	}
 	else if (events & BEV_EVENT_ERROR)
 	{
@@ -330,7 +348,6 @@ static void OnServerEvent(bufferevent* bev, short events, void* param)
 		}
 	
 		eventData->dlg->AppendMsg(tmpStr);
-		bufferevent_free(bev);
 	}
 }
 
@@ -477,11 +494,6 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 		AppendMsg(L"创建evconnlistener失败");
 				
 		event_base_free(eventBase);
-		if (IsUseSSL())
-		{
-			SSL_CTX_free(eventData->ssl_ctx);
-		}
-
 		delete eventData;
 		return;
 	}
@@ -494,10 +506,7 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 	
 		evconnlistener_free(_listener);
 		event_base_free(eventBase);
-		if (IsUseSSL())
-		{
-			SSL_CTX_free(_currentEventData->ssl_ctx);
-		}
+
 		delete _currentEventData;
 		_currentEventData = nullptr;
 	}).detach();
@@ -550,7 +559,6 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 	else if (events & BEV_EVENT_EOF) 
 	{
 		eventData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
-		bufferevent_free(bev);
 	}
 	else if (events & BEV_EVENT_ERROR)
 	{
@@ -564,7 +572,6 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 			tmpStr.Format(L"BEV_EVENT_ERROR BEV_EVENT_WRITING错误errno:%d", errno);
 		}
 		eventData->dlg->AppendMsg(tmpStr);
-		bufferevent_free(bev);
 	}
 }
 
@@ -624,16 +631,10 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	{
 		AppendMsg(L"bufferevent_socket_new失败");
 		event_base_free(eventBase);
-		if (eventData->ssl_ctx)
-		{
-			SSL_CTX_free(eventData->ssl_ctx);
-		}
-
 		delete eventData;
 		return;
 	}
-	eventData->bev = bev;
-	_currentEventData = eventData;
+	eventData->bev = bev;	
 	
 	bufferevent_setcb(bev, OnClientRead, OnClientWrite, OnClientEvent, eventData);
 
@@ -651,10 +652,12 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	if (-1 == flag)
 	{
 		AppendMsg(L"连接服务端失败");
-		bufferevent_free(bev);
+		delete eventData;
 		event_base_free(eventBase);
 		return;
 	}
+
+	_currentEventData = eventData;
 
 	// 修改读写上限
 	int bufLen = SINGLE_PACKAGE_SIZE;
@@ -680,10 +683,6 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 		AppendMsg(L"客户端socket event_base_dispatch线程 结束");
 
 		event_base_free(eventBase);
-		if (IsUseSSL())
-		{
-			SSL_CTX_free(_currentEventData->ssl_ctx);
-		}
 		delete _currentEventData;
 		_currentEventData = nullptr;
 	}).detach();
@@ -1213,7 +1212,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
 		
 	AppendMsg(L"HTTP 服务端启动");
-	thread([&, eventBase]
+	thread([&, eventData, eventBase]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 
@@ -1674,6 +1673,10 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
 		httpData->ssl = SSL_new(httpData->ssl_ctx);
 		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		if (httpData->bev)
+		{
+			bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+		}
 	}
 	else
 	{
@@ -1685,8 +1688,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 		delete httpData;
 		return;
 	}
-
-	bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
 
 	httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
 	if (httpData->evConn == NULL)
