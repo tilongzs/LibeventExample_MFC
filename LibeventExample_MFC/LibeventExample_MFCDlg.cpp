@@ -505,10 +505,9 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 		AppendMsg(L"服务端socket event_base_dispatch线程 结束");
 	
 		evconnlistener_free(_listener);
-		event_base_free(eventBase);
-
 		delete _currentEventData;
 		_currentEventData = nullptr;
+		event_base_free(eventBase);		
 	}).detach();
 
 	AppendMsg(L"服务端开始监听");
@@ -630,8 +629,8 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	if (bev == NULL)
 	{
 		AppendMsg(L"bufferevent_socket_new失败");
-		event_base_free(eventBase);
 		delete eventData;
+		event_base_free(eventBase);		
 		return;
 	}
 	eventData->bev = bev;	
@@ -682,9 +681,9 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"客户端socket event_base_dispatch线程 结束");
 
-		event_base_free(eventBase);
 		delete _currentEventData;
 		_currentEventData = nullptr;
+		event_base_free(eventBase);
 	}).detach();
 }
 
@@ -1237,23 +1236,30 @@ static void OnHttpResponseGetA(evhttp_request* req, void* arg)
 {
 	HttpData* httpData = (HttpData*)arg;
 
-	// 获取数据长度
-	size_t len = evbuffer_get_length(req->input_buffer);
-	if (len > 0)
+	if (req)
 	{
-		// 获取数据指针
-		unsigned char* data = evbuffer_pullup(req->input_buffer, len); 
-		char* responseStr = new char[len + 1]{ 0 };
-		memcpy(responseStr, data, len);
+		// 获取数据长度
+		size_t len = evbuffer_get_length(req->input_buffer);
+		if (len > 0)
+		{
+			// 获取数据指针
+			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+			char* responseStr = new char[len + 1]{ 0 };
+			memcpy(responseStr, data, len);
 
-		CString strMsg;
-		strMsg.Format(L"收到GetA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
-		httpData->dlg->AppendMsg(strMsg);
-		delete[] responseStr;
+			CString strMsg;
+			strMsg.Format(L"收到GetA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
+			httpData->dlg->AppendMsg(strMsg);
+			delete[] responseStr;
 
-		// 清空数据
-		evbuffer_drain(req->input_buffer, len);
-		evhttp_request_free(req);
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+			evhttp_request_free(req);
+		}
+	}
+	else
+	{
+		httpData->dlg->AppendMsg(L"GetA失败");
 	}
 
 	// 主动断开与服务器连接
@@ -1274,25 +1280,25 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 	evthread_use_windows_threads();
 	event_base* eventBase = event_base_new();
 
-	HttpData* httpConnData = new HttpData;
-	httpConnData->dlg = this;
+	HttpData* httpData = new HttpData;
+	httpData->dlg = this;
 
-	httpConnData->evURI = evhttp_uri_parse(uri);
-	const char* address = evhttp_uri_get_host(httpConnData->evURI);
-	int port = evhttp_uri_get_port(httpConnData->evURI);
-	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
+	httpData->evURI = evhttp_uri_parse(uri);
+	const char* host = evhttp_uri_get_host(httpData->evURI);
+	int port = evhttp_uri_get_port(httpData->evURI);
+	httpData->evConn = evhttp_connection_base_new(eventBase, NULL, host, port);
 
-	evhttp_request* req = evhttp_request_new(OnHttpResponseGetA, httpConnData);
+	evhttp_request* req = evhttp_request_new(OnHttpResponseGetA, httpData);
 
-	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_GET, "/api/getA?q=test&s=some+thing");
+	evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_GET, "/api/getA?q=test&s=some+thing");
 	
-	thread([&, eventBase, httpConnData]
+	thread([&, eventBase, httpData]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
 
 		// 先断开连接，后释放eventBase
-		delete httpConnData;
+		delete httpData;
 		event_base_free(eventBase);
 	}).detach();
 }
@@ -1343,18 +1349,48 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	evthread_use_windows_threads();
 	event_base* eventBase = event_base_new();
 
-	HttpData* httpConnData = new HttpData;
-	httpConnData->dlg = this;
+	HttpData* httpData = new HttpData;
+	httpData->dlg = this;
 
-	httpConnData->evURI = evhttp_uri_parse(uri);
-	const char* address = evhttp_uri_get_host(httpConnData->evURI);
-	int port = evhttp_uri_get_port(httpConnData->evURI);
-	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
-	evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
-	evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
-	evhttp_connection_set_timeout(httpConnData->evConn, 3);// 设置超时时间(s)
+	httpData->evURI = evhttp_uri_parse(uri);
+	const char* host = evhttp_uri_get_host(httpData->evURI);
+	int port = evhttp_uri_get_port(httpData->evURI);
 
-	evhttp_request* req = evhttp_request_new(OnHttpResponsePostA, httpConnData);
+	if (IsUseSSL())
+	{
+		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
+		httpData->ssl = SSL_new(httpData->ssl_ctx);
+		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		if (httpData->bev)
+		{
+			bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+		}
+	}
+	else
+	{
+		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+	}
+	if (httpData->bev == NULL)
+	{
+		AppendMsg(L"bev创建失败");
+		delete httpData;
+		return;
+	}
+
+	httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
+	if (httpData->evConn == NULL)
+	{
+		AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
+		delete httpData;
+		return;
+	}
+
+	evhttp_connection_set_max_headers_size(httpData->evConn, HTTP_MAX_HEAD_SIZE);
+	evhttp_connection_set_max_body_size(httpData->evConn, HTTP_MAX_BODY_SIZE);
+	evhttp_connection_set_timeout(httpData->evConn, 3);// 设置超时时间(s)
+
+	evhttp_request* req = evhttp_request_new(OnHttpResponsePostA, httpData);
 
 	// 标准Header
 	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
@@ -1369,15 +1405,15 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	evbuffer_add(req->output_buffer, postBuf, bufSize);
 	delete[] postBuf;
 
-	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_POST, "/api/postA?q=test&s=some+thing");
+	evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_POST, "/api/postA?q=test&s=some+thing");
 
-	thread([&, eventBase, httpConnData]
+	thread([&, eventBase, httpData]
 	{
 		event_base_dispatch(eventBase); // 阻塞
 		AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
 
 		// 先断开连接，后释放eventBase
-		delete httpConnData;
+		delete httpData;
 		event_base_free(eventBase);		
 	}).detach();
 }
@@ -1457,18 +1493,48 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	evthread_use_windows_threads();
 	event_base* eventBase = event_base_new();
 
-	HttpData* httpConnData = new HttpData;
-	httpConnData->dlg = this;
+	HttpData* httpData = new HttpData;
+	httpData->dlg = this;
 
-	httpConnData->evURI = evhttp_uri_parse(uri);
-	const char* address = evhttp_uri_get_host(httpConnData->evURI);
-	int port = evhttp_uri_get_port(httpConnData->evURI);
-	httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
-	evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
-	evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
-	//evhttp_connection_set_timeout(httpConnData->evConn, 30);// 可以不设置超时时间；设置超时时间，文件越大，需要的时间越长(s)
+	httpData->evURI = evhttp_uri_parse(uri);
+	const char* host = evhttp_uri_get_host(httpData->evURI);
+	int port = evhttp_uri_get_port(httpData->evURI);
 
-	evhttp_request* req = evhttp_request_new(OnHttpResponsePostFileA, httpConnData);
+	if (IsUseSSL())
+	{
+		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
+		httpData->ssl = SSL_new(httpData->ssl_ctx);
+		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		if (httpData->bev)
+		{
+			bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+		}
+	}
+	else
+	{
+		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+	}
+	if (httpData->bev == NULL)
+	{
+		AppendMsg(L"bev创建失败");
+		delete httpData;
+		return;
+	}
+
+	httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
+	if (httpData->evConn == NULL)
+	{
+		AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
+		delete httpData;
+		return;
+	}
+
+	evhttp_connection_set_max_headers_size(httpData->evConn, HTTP_MAX_HEAD_SIZE);
+	evhttp_connection_set_max_body_size(httpData->evConn, HTTP_MAX_BODY_SIZE);
+	//evhttp_connection_set_timeout(httpData->evConn, 30);// 可以不设置超时时间；设置超时时间，文件越大，需要的时间越长(s)
+
+	evhttp_request* req = evhttp_request_new(OnHttpResponsePostFileA, httpData);
 
 	// 标准Header
 	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
@@ -1489,15 +1555,15 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 		return;
 	}
 
-	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_POST, "/api/postFileA?q=test&s=some+thing");
+	evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_POST, "/api/postFileA?q=test&s=some+thing");
 
-	thread([&, eventBase, httpConnData]
+	thread([&, eventBase, httpData]
 		{
 			event_base_dispatch(eventBase); // 阻塞
 			AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
 
 			// 先断开连接，后释放eventBase
-			delete httpConnData;
+			delete httpData;
 			event_base_free(eventBase);
 		}).detach();
 }
@@ -1527,7 +1593,7 @@ static void OnHttpResponsePutA(evhttp_request* req, void* arg)
 	}
 	else
 	{
-		httpData->dlg->AppendMsg(L"PostA失败");
+		httpData->dlg->AppendMsg(L"PutA失败");
 	}
 
 	evhttp_request_free(httpData->req);
@@ -1550,22 +1616,52 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 		evthread_use_windows_threads();
 		event_base* eventBase = event_base_new();
 
-		HttpData* httpConnData = new HttpData;
-		httpConnData->dlg = this;
+		HttpData* httpData = new HttpData;
+		httpData->dlg = this;
 
-		httpConnData->evURI = evhttp_uri_parse(uri);
-		const char* address = evhttp_uri_get_host(httpConnData->evURI);
-		int port = evhttp_uri_get_port(httpConnData->evURI);
-		httpConnData->evConn = evhttp_connection_base_new(eventBase, NULL, address, port);
-		evhttp_connection_set_max_headers_size(httpConnData->evConn, HTTP_MAX_HEAD_SIZE);
-		evhttp_connection_set_max_body_size(httpConnData->evConn, HTTP_MAX_BODY_SIZE);
-		evhttp_connection_set_timeout(httpConnData->evConn, 1);// 设置闲置连接自动断开的超时时间(s)
+		httpData->evURI = evhttp_uri_parse(uri);
+		const char* host = evhttp_uri_get_host(httpData->evURI);
+		int port = evhttp_uri_get_port(httpData->evURI);
+
+		if (IsUseSSL())
+		{
+			// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+			httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
+			httpData->ssl = SSL_new(httpData->ssl_ctx);
+			httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+			if (httpData->bev)
+			{
+				bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+			}
+		}
+		else
+		{
+			httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+		}
+		if (httpData->bev == NULL)
+		{
+			AppendMsg(L"bev创建失败");
+			delete httpData;
+			return;
+		}
+
+		httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
+		if (httpData->evConn == NULL)
+		{
+			AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
+			delete httpData;
+			return;
+		}
+
+		evhttp_connection_set_max_headers_size(httpData->evConn, HTTP_MAX_HEAD_SIZE);
+		evhttp_connection_set_max_body_size(httpData->evConn, HTTP_MAX_BODY_SIZE);
+		evhttp_connection_set_timeout(httpData->evConn, 1);// 设置闲置连接自动断开的超时时间(s)
 		
-		auto funReq = [httpConnData, eventBase]
+		auto funReq = [httpData, eventBase]
 		{
 			auto threadID = this_thread::get_id();
-			evhttp_request* req = evhttp_request_new(OnHttpResponsePutA, httpConnData);
-			httpConnData->req = req;
+			evhttp_request* req = evhttp_request_new(OnHttpResponsePutA, httpData);
+			httpData->req = req;
 
 			// 标准Header
 			evhttp_add_header(req->output_headers, "Connection", "keep-alive");
@@ -1580,8 +1676,8 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 			evbuffer_add(req->output_buffer, postBuf, bufSize);
 			delete[] postBuf;
 
-			evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_PUT, "/api/putA?q=test&s=some+thing");
-			httpConnData->dlg->AppendMsg(L"evhttp_make_request");
+			evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_PUT, "/api/putA?q=test&s=some+thing");
+			httpData->dlg->AppendMsg(L"evhttp_make_request");
 		};
 
 		// 创建空白定时器，以维持eventBase
@@ -1609,7 +1705,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 		event_base_dispatch(eventBase); // 阻塞			
 
 		// 先断开连接，后释放eventBase
-		delete httpConnData;
+		delete httpData;
 		event_base_free(eventBase);
 		AppendMsg(L"客户端HttpPut event_base_dispatch线程 结束");
 
