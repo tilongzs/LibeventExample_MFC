@@ -17,6 +17,7 @@
 // vcpkg管理
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <wincrypt.h>
 /*******************************/
 
 using namespace std;
@@ -79,6 +80,10 @@ public:
 	evhttp_uri* evURI = nullptr;
 	evhttp_request* req = nullptr;
 
+	bufferevent* bev = nullptr;
+	ssl_ctx_st* ssl_ctx = nullptr;
+	ssl_st* ssl = nullptr;
+
 private:
 	mutex _mtx;
 };
@@ -120,6 +125,7 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_POST, &CLibeventExample_MFCDlg::OnBtnHttpPost)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_PUT, &CLibeventExample_MFCDlg::OnBtnHttpPut)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_POST_FILE, &CLibeventExample_MFCDlg::OnBtnHttpPostFile)
+	ON_BN_CLICKED(IDC_BUTTON_HTTP_DEL, &CLibeventExample_MFCDlg::OnBtnHttpDel)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -1614,3 +1620,188 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 	}).detach();
 }
 
+
+static void OnHttpResponseDelA(evhttp_request* req, void* arg)
+{
+	HttpData* httpData = (HttpData*)arg;
+
+	if (req)
+	{
+		// 获取数据长度
+		size_t len = evbuffer_get_length(req->input_buffer);
+		if (len > 0)
+		{
+			// 获取数据指针
+			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+			char* responseStr = new char[len + 1]{ 0 };
+			memcpy(responseStr, data, len);
+
+			CString strMsg;
+			strMsg.Format(L"收到DelA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
+			httpData->dlg->AppendMsg(strMsg);
+			delete[] responseStr;
+
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+			evhttp_request_free(req);
+		}
+	}	
+
+	// 主动断开与服务器连接
+	httpData->Free();
+}
+
+static int add_cert_for_store(X509_STORE* store, const TCHAR* name)
+{
+	HCERTSTORE sys_store = NULL;
+	PCCERT_CONTEXT ctx = NULL;
+	int r = 0;
+
+// 	sys_store = CertOpenSystemStore(0, name);
+// 	if (!sys_store) 
+// 	{
+// 		return -1;
+// 	}
+// 	while ((ctx = CertEnumCertificatesInStore(sys_store, ctx))) 
+// 	{
+// 		X509* x509 = d2i_X509(NULL, (unsigned char const**)&ctx->pbCertEncoded,
+// 			ctx->cbCertEncoded);
+// 		if (x509) 
+// 		{
+// 			X509_STORE_add_cert(store, x509);
+// 			X509_free(x509);
+// 		}
+// 		else 
+// 		{
+// 			r = -1;			
+// 			break;
+// 		}
+// 	}
+// 	CertCloseStore(sys_store, 0);
+	return r;
+}
+
+static int cert_verify_callback(X509_STORE_CTX* x509_ctx, void* arg)
+{
+	// 参照https-client.c
+
+	char cert_str[256];
+	const char* host = (const char*)arg;
+	const char* res_str = "X509_verify_cert failed";
+	//HostnameValidationResult res = Error;
+
+	/* This is the function that OpenSSL would call if we hadn't called
+	 * SSL_CTX_set_cert_verify_callback().  Therefore, we are "wrapping"
+	 * the default functionality, rather than replacing it. */
+	int ok_so_far = 0;
+
+	X509* server_cert = NULL;
+
+// 	if (ignore_cert) {
+// 		return 1;
+// 	}
+
+// 	ok_so_far = X509_verify_cert(x509_ctx);
+// 
+// 	server_cert = X509_STORE_CTX_get_current_cert(x509_ctx);
+
+// 	if (ok_so_far) {
+// 		res = validate_hostname(host, server_cert);
+// 
+// 		switch (res) {
+// 		case MatchFound:
+// 			res_str = "MatchFound";
+// 			break;
+// 		case MatchNotFound:
+// 			res_str = "MatchNotFound";
+// 			break;
+// 		case NoSANPresent:
+// 			res_str = "NoSANPresent";
+// 			break;
+// 		case MalformedCertificate:
+// 			res_str = "MalformedCertificate";
+// 			break;
+// 		case Error:
+// 			res_str = "Error";
+// 			break;
+// 		default:
+// 			res_str = "WTF!";
+// 			break;
+// 		}
+// 	}
+
+// 	X509_NAME_oneline(X509_get_subject_name(server_cert),
+// 		cert_str, sizeof(cert_str));
+
+// 	if (res == MatchFound) {
+// 		printf("https server '%s' has this certificate, "
+// 			"which looks good to me:\n%s\n",
+// 			host, cert_str);
+// 		return 1;
+// 	}
+// 	else {
+// 		printf("Got '%s' for hostname '%s' and certificate:\n%s\n",
+// 			res_str, host, cert_str);
+// 		return 0;
+// 	}
+
+	return true;
+}
+
+void CLibeventExample_MFCDlg::OnBtnHttpDel()
+{
+	CString tmpStr;
+	_editRemotePort.GetWindowText(tmpStr);
+	const int remotePort = _wtoi(tmpStr);
+
+	CString strURI;
+	strURI.Format(L"http://127.0.0.1:%d/api/delA?q=test&s=some+thing", remotePort);
+	string utf8URI = UnicodeToUTF8(strURI);
+	const char* uri = utf8URI.c_str();
+
+	evthread_use_windows_threads();
+	event_base* eventBase = event_base_new();
+
+	HttpData* httpConnData = new HttpData;
+	httpConnData->dlg = this;
+
+	httpConnData->evURI = evhttp_uri_parse(uri);
+	const char* host = evhttp_uri_get_host(httpConnData->evURI);
+	int port = evhttp_uri_get_port(httpConnData->evURI);
+
+	httpConnData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+	if (httpConnData->bev == NULL)
+	{
+		AppendMsg(L"bev创建失败");
+		delete httpConnData;
+		return;
+	}
+
+	httpConnData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpConnData->bev, host, port);
+	if (httpConnData->evConn == NULL)
+	{
+		AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
+		delete httpConnData;
+		return;
+	}
+
+	evhttp_request* req = evhttp_request_new(OnHttpResponseDelA, httpConnData);
+	if (req == NULL)
+	{
+		AppendMsg(L"evhttp_request_new失败");
+		delete httpConnData;
+		return;
+	}
+
+	evhttp_make_request(httpConnData->evConn, req, EVHTTP_REQ_GET, "/api/delA?q=test&s=some+thing");
+
+	thread([&, eventBase, httpConnData]
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
+
+			// 先断开连接，后释放eventBase
+			delete httpConnData;
+			event_base_free(eventBase);
+		}).detach();
+}

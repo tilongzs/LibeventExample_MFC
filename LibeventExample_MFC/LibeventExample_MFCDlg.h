@@ -86,4 +86,5 @@ public:
 	afx_msg void OnBtnHttpPost();
 	afx_msg void OnBtnHttpPut();
 	afx_msg void OnBtnHttpPostFile();
+	afx_msg void OnBtnHttpDel();
 };
