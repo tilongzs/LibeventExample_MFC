@@ -576,6 +576,8 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 
 void CLibeventExample_MFCDlg::OnBtnConnect()
 {
+	CString tmpStr;
+
 	event_config* cfg = event_config_new();
 	evthread_use_windows_threads();
 	event_config_set_num_cpus_hint(cfg, 8);
@@ -590,43 +592,55 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	event_config_free(cfg);
 	cfg = nullptr;
 
-	// 使用指定的本地IP、端口
-	CString tmpStr;
-// 	_editPort.GetWindowText(tmpStr);
-// 	const int localPort = _wtoi(tmpStr);
-// 
-// 	sockaddr_in localAddr = { 0 };
-// 	if (!ConvertIPPort(DEFAULT_SOCKET_IP, localPort, localAddr))
-// 	{
-// 		AppendMsg(L"IP地址无效");
-// 	}
-// 
-// 	evutil_socket_t sockfd = socket(AF_INET, SOCK_STREAM, 0);
-// 	if (bind(sockfd, (sockaddr*)&localAddr, sizeof(localAddr)))
-// 	{
-// 		AppendMsg(L"TCP绑定失败");
-// 		return;
-// 	}
-// 	bufferevent* bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_CLOSE_ON_FREE);
-	/************************************************************/
-
 	EventData* eventData = new EventData;
 	eventData->dlg = this;
-
-	bufferevent* bev = nullptr;
 	if (IsUseSSL())
 	{
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
 		eventData->ssl_ctx = SSL_CTX_new(TLS_client_method());
 		eventData->ssl = SSL_new(eventData->ssl_ctx);
+	}
+
+	bufferevent* bev = nullptr;
+#ifdef _USE_RANDOM_LOCALPORT
+	// 使用随机的本地端口
+	if (IsUseSSL())
+	{
 		bev = bufferevent_openssl_socket_new(eventBase, -1, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
 	}
 	else
 	{
 		bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
 	}
+#else
+	// 使用指定的本地IP、端口
+	_editPort.GetWindowText(tmpStr);
+	const int localPort = _wtoi(tmpStr);
 
-	if (bev == NULL)
+	sockaddr_in localAddr = { 0 };
+	if (!ConvertIPPort(DEFAULT_SOCKET_IP, localPort, localAddr))
+	{
+		AppendMsg(L"IP地址无效");
+	}
+
+	evutil_socket_t sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (::bind(sockfd, (sockaddr*)&localAddr, sizeof(localAddr)) != 0)
+	{
+		AppendMsg(L"TCP绑定失败");
+		return;
+	}
+
+	if (IsUseSSL())
+	{
+		bev = bufferevent_openssl_socket_new(eventBase, sockfd, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+	}
+	else
+	{
+		bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_CLOSE_ON_FREE);
+	}
+#endif
+
+	if (nullptr == bev)
 	{
 		AppendMsg(L"bufferevent_socket_new失败");
 		delete eventData;
