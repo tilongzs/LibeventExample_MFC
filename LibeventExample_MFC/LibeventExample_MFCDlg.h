@@ -27,7 +27,7 @@ public:
 	enum { IDD = IDD_LibeventExample_MFC_DIALOG };
 #endif
 
-	protected:
+protected:
 	virtual void DoDataExchange(CDataExchange* pDX);
 
 	struct TheadFunc
@@ -41,7 +41,7 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
-		
+
 	LRESULT OnFunction(WPARAM wParam, LPARAM lParam);
 private:
 	CEdit _editRecv;
@@ -50,6 +50,7 @@ private:
 	CButton _btnUseSSL;
 	CButton _btnHTTPServer;
 	CButton _btnStopHttpServer;
+	CIPAddressCtrl _ipRemote;
 
 	// TCP
 	evconnlistener* _listener = nullptr;
@@ -77,8 +78,8 @@ private:
 	afx_msg void OnBtnDisconnectServer();
 	afx_msg void OnBtnSendMsg();
 	afx_msg void OnBtnUdpBind();
-	afx_msg void OnBtnUdpSendMsg();	
-	afx_msg void OnBtnUdpClose();	
+	afx_msg void OnBtnUdpSendMsg();
+	afx_msg void OnBtnUdpClose();
 	afx_msg void OnBtnHttpServer();
 	afx_msg void OnBtnStopHttpServer();
 public:

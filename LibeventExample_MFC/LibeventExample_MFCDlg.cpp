@@ -27,7 +27,6 @@ using namespace std;
 #endif
 
 #define WMSG_FUNCTION		WM_USER + 1
-#define DEFAULT_SOCKET_IP "127.0.0.1"
 #define DEFAULT_SOCKET_PORT 23300
 #define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
 #define SINGLE_UDP_PACKAGE_SIZE 65507 // 单个UDP包的最大大小（理论值：65507字节）
@@ -123,6 +122,7 @@ void CLibeventExample_MFCDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_CHECK_SSL, _btnUseSSL);
 	DDX_Control(pDX, IDC_BUTTON_HTTP_SERVER, _btnHTTPServer);
 	DDX_Control(pDX, IDC_BUTTON_HTTP_SERVER_STOP, _btnStopHttpServer);
+	DDX_Control(pDX, IDC_IPADDRESS_REMOTE, _ipRemote);
 }
 
 BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
@@ -156,15 +156,16 @@ BOOL CLibeventExample_MFCDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);
 
 	_editPort.SetWindowText(L"23300");
+	_ipRemote.SetAddress(127, 0, 0, 1);
 	_editRemotePort.SetWindowText(L"23300");
 
 	_btnStopHttpServer.EnableWindow(FALSE);
 
 	AppendMsg(L"启动");
-	
+
 	AfxSocketInit();
 
-	return TRUE; 
+	return TRUE;
 }
 
 void CLibeventExample_MFCDlg::OnPaint()
@@ -260,23 +261,23 @@ void OnEventTimer(evutil_socket_t fd, short event, void* arg)
 void CLibeventExample_MFCDlg::InitTimer()
 {
 	event_base* eventBase = event_base_new();
-	
+
 	//ev = evtimer_new(_eventBase, DoTimer, NULL);
 	event* ev = event_new(eventBase, -1, EV_ET/*一次性*/, OnEventTimer, this);
 	if (ev) {
 		timeval timeout = { 2, 0 };
-// 		timeout.tv_sec = 2;
-// 		timeout.tv_usec = 0;
+		// 		timeout.tv_sec = 2;
+		// 		timeout.tv_usec = 0;
 		event_add(ev, &timeout);
 
 		thread([&, eventBase, ev]
-		{
-			event_base_dispatch(eventBase); // 阻塞
-			AppendMsg(L"定时器 结束");
+			{
+				event_base_dispatch(eventBase); // 阻塞
+				AppendMsg(L"定时器 结束");
 
-			event_free(ev);
-			event_base_free(eventBase);			
-		}).detach();
+				event_free(ev);
+				event_base_free(eventBase);
+			}).detach();
 	}
 }
 
@@ -312,12 +313,12 @@ static void OnServerRead(bufferevent* bev, void* param)
 	size_t sz = evbuffer_get_length(input);
 	if (sz > 0)
 	{
-		char* buffer = new char[sz]{0};
+		char* buffer = new char[sz] {0};
 		bufferevent_read(bev, buffer, sz);
 
 		CString tmpStr;
 		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
-		eventData->dlg->AppendMsg(tmpStr);		
+		eventData->dlg->AppendMsg(tmpStr);
 
 		delete[] buffer;
 	}
@@ -327,7 +328,7 @@ static void OnServerEvent(bufferevent* bev, short events, void* param)
 {
 	EventData* eventData = (EventData*)param;
 
-	if (events & BEV_EVENT_EOF) 
+	if (events & BEV_EVENT_EOF)
 	{
 		eventData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
 		if (eventData->ssl)
@@ -346,7 +347,7 @@ static void OnServerEvent(bufferevent* bev, short events, void* param)
 		{
 			tmpStr.Format(L"BEV_EVENT_ERROR BEV_EVENT_WRITING错误errno:%d", errno);
 		}
-	
+
 		eventData->dlg->AppendMsg(tmpStr);
 	}
 }
@@ -378,7 +379,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t fd, so
 		bev = bufferevent_socket_new(eventBase, fd, BEV_OPT_CLOSE_ON_FREE);
 	}
 
-	if (!bev) 
+	if (!bev)
 	{
 		eventData->dlg->AppendMsg(L"bufferevent_socket_new失败");
 		event_base_loopbreak(eventBase);
@@ -433,7 +434,7 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 	_editPort.GetWindowText(tmpStr);
 	const int port = _wtoi(tmpStr);
 
-	sockaddr_in localAddr = {0};
+	sockaddr_in localAddr = { 0 };
 	localAddr.sin_family = AF_INET;
 	localAddr.sin_port = htons(port);
 
@@ -446,11 +447,11 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 			生成x.509证书
 			首选在安装好openssl的机器上创建私钥文件：server.key
 			> openssl genrsa -out server.key 2048
-			
-			得到私钥文件后我们需要一个证书请求文件：server.csr，将来你可以拿这个证书请求向正规的证书管理机构申请证书			
+
+			得到私钥文件后我们需要一个证书请求文件：server.csr，将来你可以拿这个证书请求向正规的证书管理机构申请证书
 			> openssl req -new -key server.key -out server.csr
-			
-			最后我们生成自签名的x.509证书（有效期365天）：server.crt			
+
+			最后我们生成自签名的x.509证书（有效期365天）：server.crt
 			> openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt
 		*/
 		CString exeDir = GetModuleDir();
@@ -492,7 +493,7 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 	if (!_listener)
 	{
 		AppendMsg(L"创建evconnlistener失败");
-				
+
 		event_base_free(eventBase);
 		delete eventData;
 		return;
@@ -500,17 +501,17 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 	_currentEventData = eventData;
 
 	thread([&, eventBase]
-	{
-		event_base_dispatch(eventBase); // 阻塞
-		AppendMsg(L"服务端socket event_base_dispatch线程 结束");
-	
-		evconnlistener_free(_listener);
-		delete _currentEventData;
-		_currentEventData = nullptr;
-		event_base_free(eventBase);		
-	}).detach();
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"服务端socket event_base_dispatch线程 结束");
 
-	AppendMsg(L"服务端开始监听");
+			evconnlistener_free(_listener);
+			delete _currentEventData;
+			_currentEventData = nullptr;
+			event_base_free(eventBase);
+		}).detach();
+
+		AppendMsg(L"服务端开始监听");
 }
 
 void CLibeventExample_MFCDlg::OnBtnStopListen()
@@ -555,7 +556,7 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 	{
 		eventData->dlg->AppendMsg(L"连接服务端成功");
 	}
-	else if (events & BEV_EVENT_EOF) 
+	else if (events & BEV_EVENT_EOF)
 	{
 		eventData->dlg->AppendMsg(L"BEV_EVENT_EOF 连接关闭");
 	}
@@ -618,7 +619,7 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	const int localPort = _wtoi(tmpStr);
 
 	sockaddr_in localAddr = { 0 };
-	if (!ConvertIPPort(DEFAULT_SOCKET_IP, localPort, localAddr))
+	if (!ConvertIPPort("0.0.0.0", localPort, localAddr))
 	{
 		AppendMsg(L"IP地址无效");
 	}
@@ -644,22 +645,22 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	{
 		AppendMsg(L"bufferevent_socket_new失败");
 		delete eventData;
-		event_base_free(eventBase);		
+		event_base_free(eventBase);
 		return;
 	}
-	eventData->bev = bev;	
-	
+	eventData->bev = bev;
+
 	bufferevent_setcb(bev, OnClientRead, OnClientWrite, OnClientEvent, eventData);
 
-	//连接服务端	
+	//连接服务端
+	DWORD dwRemoteIP;
+	_ipRemote.GetAddress(dwRemoteIP);
+
 	_editRemotePort.GetWindowText(tmpStr);
 	const int remotePort = _wtoi(tmpStr);
 
 	sockaddr_in serverAddr = { 0 };
-	if (!ConvertIPPort(DEFAULT_SOCKET_IP, remotePort, serverAddr))
-	{
-		AppendMsg(L"IP地址无效");
-	}
+	ConvertIPPort(dwRemoteIP, remotePort, serverAddr);
 
 	int flag = bufferevent_socket_connect(bev, (sockaddr*)&serverAddr, sizeof(serverAddr));
 	if (-1 == flag)
@@ -691,14 +692,14 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 
 	thread([&, eventBase]
-	{
-		event_base_dispatch(eventBase); // 阻塞
-		AppendMsg(L"客户端socket event_base_dispatch线程 结束");
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"客户端socket event_base_dispatch线程 结束");
 
-		delete _currentEventData;
-		_currentEventData = nullptr;
-		event_base_free(eventBase);
-	}).detach();
+			delete _currentEventData;
+			_currentEventData = nullptr;
+			event_base_free(eventBase);
+		}).detach();
 }
 
 void CLibeventExample_MFCDlg::OnBtnDisconnectServer()
@@ -723,11 +724,11 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 	thread([&] {
 		if (_currentEventData)
 		{
-	// 		char* msg = new char[]("hello libevent");
-	// 		int len = strlen(msg);
+			// 		char* msg = new char[]("hello libevent");
+			// 		int len = strlen(msg);
 
 			const int len = 1024 * 1024;
-			char* msg = new char[len]{0};
+			char* msg = new char[len] {0};
 
 			int ret = bufferevent_write(_currentEventData->bev, msg, len);
 			if (ret != 0)
@@ -737,7 +738,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 
 			delete[] msg;
 		}
-	}).detach();	
+		}).detach();
 }
 
 static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
@@ -783,7 +784,7 @@ void CLibeventExample_MFCDlg::OnBtnUdpBind()
 	_editPort.GetWindowText(tmpStr);
 	const int port = _wtoi(tmpStr);
 
-	sockaddr_in localAddr = { 0 };	
+	sockaddr_in localAddr = { 0 };
 	localAddr.sin_family = AF_INET;
 	localAddr.sin_port = htons(port);
 
@@ -809,38 +810,38 @@ void CLibeventExample_MFCDlg::OnBtnUdpBind()
 	event_add(_currentEvent, nullptr);
 
 	thread([&, eventBase, eventData]
-	{
-		event_base_dispatch(eventBase); // 阻塞
-		AppendMsg(L"UDP线程 结束");
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"UDP线程 结束");
 
-		event_free(_currentEvent);
-		_currentEvent = nullptr;
-		_currentSockfd = -1;
-		event_base_free(eventBase);
-		delete eventData;
-	}).detach();
+			event_free(_currentEvent);
+			_currentEvent = nullptr;
+			_currentSockfd = -1;
+			event_base_free(eventBase);
+			delete eventData;
+		}).detach();
 
-	AppendMsg(L"UDP启动成功");
+		AppendMsg(L"UDP启动成功");
 }
 
 void CLibeventExample_MFCDlg::OnBtnUdpSendMsg()
 {
+	DWORD dwRemoteIP;
+	_ipRemote.GetAddress(dwRemoteIP);
+
 	CString tmpStr;
 	_editRemotePort.GetWindowText(tmpStr);
 	const int remotePort = _wtoi(tmpStr);
 
 	sockaddr_in remoteAddr = { 0 };
-	if (!ConvertIPPort(DEFAULT_SOCKET_IP, remotePort, remoteAddr))
-	{
-		AppendMsg(L"IP地址无效");
-	}
+	ConvertIPPort(dwRemoteIP, remotePort, remoteAddr);
 
 	if (_currentSockfd != -1)
 	{
 		const int len = SINGLE_UDP_PACKAGE_SIZE;
 		char* msg = new char[len] {0};
 		int sendLen = sendto(_currentSockfd, msg, len, 0, (sockaddr*)&remoteAddr, sizeof(sockaddr_in));
-		if (sendLen == -1) 
+		if (sendLen == -1)
 		{
 			AppendMsg(L"UDP发送失败");
 		}
@@ -862,7 +863,7 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 	// http://127.0.0.1:23300/api/getA?q=test&s=some+thing
 
-	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);	
+	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
 	const char* uri = evhttp_request_get_uri(req);// 获取请求uri "/api/getA?q=test&s=some+thing"
 	//evhttp_uri* evURI = evhttp_uri_parse(uri);// 解码uri
 	if (!evURI)
@@ -870,8 +871,8 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 		evhttp_send_error(req, HTTP_BADREQUEST, NULL);
 		return;
 	}
-// 	char uri[URL_MAX] = {0};
-// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/getA?q=test&s=some+thing"
+	// 	char uri[URL_MAX] = {0};
+	// 	evhttp_uri_join((evhttp_uri*)evURI, uri, URL_MAX);// 获取请求uri "/api/getA?q=test&s=some+thing"
 
 	const char* path = evhttp_uri_get_path(evURI); // 获取uri中的path部分 "/api/getA"
 	if (!path)
@@ -1012,14 +1013,14 @@ static void OnHTTP_API_postFileA(evhttp_request* req, void* arg)
 
 	// 获取数据长度
 	size_t len = evbuffer_get_length(req->input_buffer);
- 	if (len != fileSize)
- 	{
- 		evhttp_send_reply(req, HTTP_NOCONTENT, "wrong bodySize", nullptr);
- 		CString strMsg;
- 		strMsg.Format(L"fileName:%s fileSize:%u 但实际收到PostFileA接口%u字节数据", fileName.c_str(), fileSize, len);
- 		dlg->AppendMsg(strMsg);
- 		return;
- 	}
+	if (len != fileSize)
+	{
+		evhttp_send_reply(req, HTTP_NOCONTENT, "wrong bodySize", nullptr);
+		CString strMsg;
+		strMsg.Format(L"fileName:%s fileSize:%u 但实际收到PostFileA接口%u字节数据", fileName.c_str(), fileSize, len);
+		dlg->AppendMsg(strMsg);
+		return;
+	}
 
 	if (len > 0)
 	{
@@ -1210,28 +1211,28 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		AppendMsg(L"创建evhttp_bind_socket失败");
 		delete eventData;
 		return;
-	}	
+	}
 
 	/*
 		URI like http://127.0.0.1:23300/api/getA?q=test&s=some+thing
 		The first entry is: key="q", value="test"
 		The second entry is: key="s", value="some thing"
-	*/		
+	*/
 	evhttp_set_cb(_httpServer, "/api/getA", OnHTTP_API_getA, this);
 	evhttp_set_cb(_httpServer, "/api/postA", OnHTTP_API_postA, this);
 	evhttp_set_cb(_httpServer, "/api/postFileA", OnHTTP_API_postFileA, this);
 	evhttp_set_cb(_httpServer, "/api/putA", OnHTTP_API_putA, this);
 	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
 	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
-		
+
 	AppendMsg(L"HTTP 服务端启动");
 	thread([&, eventData, eventBase]
-	{
-		event_base_dispatch(eventBase); // 阻塞
+		{
+			event_base_dispatch(eventBase); // 阻塞
 
-		delete eventData;
-		evhttp_free(_httpServer);		
-	}).detach();
+			delete eventData;
+			evhttp_free(_httpServer);
+		}).detach();
 }
 
 void CLibeventExample_MFCDlg::OnBtnStopHttpServer()
@@ -1290,7 +1291,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 	strURI.Format(L"http://127.0.0.1:%d/api/getA?q=test&s=some+thing", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
-		
+
 	evthread_use_windows_threads();
 	event_base* eventBase = event_base_new();
 
@@ -1305,16 +1306,16 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 	evhttp_request* req = evhttp_request_new(OnHttpResponseGetA, httpData);
 
 	evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_GET, "/api/getA?q=test&s=some+thing");
-	
-	thread([&, eventBase, httpData]
-	{
-		event_base_dispatch(eventBase); // 阻塞
-		AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
 
-		// 先断开连接，后释放eventBase
-		delete httpData;
-		event_base_free(eventBase);
-	}).detach();
+	thread([&, eventBase, httpData]
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
+
+			// 先断开连接，后释放eventBase
+			delete httpData;
+			event_base_free(eventBase);
+		}).detach();
 }
 
 static void OnHttpResponsePostA(evhttp_request* req, void* arg)
@@ -1343,7 +1344,7 @@ static void OnHttpResponsePostA(evhttp_request* req, void* arg)
 	else
 	{
 		httpData->dlg->AppendMsg(L"PostA失败");
-	}	
+	}
 
 	// 主动断开与服务器连接
 	//httpData->Free();
@@ -1422,14 +1423,14 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_POST, "/api/postA?q=test&s=some+thing");
 
 	thread([&, eventBase, httpData]
-	{
-		event_base_dispatch(eventBase); // 阻塞
-		AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
 
-		// 先断开连接，后释放eventBase
-		delete httpData;
-		event_base_free(eventBase);		
-	}).detach();
+			// 先断开连接，后释放eventBase
+			delete httpData;
+			event_base_free(eventBase);
+		}).detach();
 }
 
 static void OnHttpResponsePostFileA(evhttp_request* req, void* arg)
@@ -1470,7 +1471,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	_editRemotePort.GetWindowText(tmpStr);
 	const int remotePort = _wtoi(tmpStr);
 
-	CFileDialog dlg(TRUE,NULL,NULL, OFN_FILEMUSTEXIST,
+	CFileDialog dlg(TRUE, NULL, NULL, OFN_FILEMUSTEXIST,
 		_T("All Files (*.*)|*.*||"),
 		NULL);
 	if (dlg.DoModal() != IDOK)
@@ -1482,7 +1483,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	/*
 	* _wsopen_s说明
 	https://docs.microsoft.com/zh-cn/previous-versions/w64k0ytk(v=vs.110)?redirectedfrom=MSDN
-	*/	
+	*/
 	int readFile = NULL;
 	int ret = _wsopen_s(&readFile, dlg.GetPathName(), _O_RDONLY | _O_BINARY, _SH_DENYWR, _S_IREAD); // 使用宽字节接口解决中文问题
 	if (0 != ret)
@@ -1621,109 +1622,109 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 	const int remotePort = _wtoi(tmpStr);
 
 	thread([&, remotePort]
-	{
-		CString strURI;
-		strURI.Format(L"http://127.0.0.1:%d/api/putA?q=test&s=some+thing", remotePort);
-		string utf8URI = UnicodeToUTF8(strURI);
-		const char* uri = utf8URI.c_str();
-
-		evthread_use_windows_threads();
-		event_base* eventBase = event_base_new();
-
-		HttpData* httpData = new HttpData;
-		httpData->dlg = this;
-
-		httpData->evURI = evhttp_uri_parse(uri);
-		const char* host = evhttp_uri_get_host(httpData->evURI);
-		int port = evhttp_uri_get_port(httpData->evURI);
-
-		if (IsUseSSL())
 		{
-			// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
-			httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
-			httpData->ssl = SSL_new(httpData->ssl_ctx);
-			httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-			if (httpData->bev)
+			CString strURI;
+			strURI.Format(L"http://127.0.0.1:%d/api/putA?q=test&s=some+thing", remotePort);
+			string utf8URI = UnicodeToUTF8(strURI);
+			const char* uri = utf8URI.c_str();
+
+			evthread_use_windows_threads();
+			event_base* eventBase = event_base_new();
+
+			HttpData* httpData = new HttpData;
+			httpData->dlg = this;
+
+			httpData->evURI = evhttp_uri_parse(uri);
+			const char* host = evhttp_uri_get_host(httpData->evURI);
+			int port = evhttp_uri_get_port(httpData->evURI);
+
+			if (IsUseSSL())
 			{
-				bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+				// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+				httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
+				httpData->ssl = SSL_new(httpData->ssl_ctx);
+				httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+				if (httpData->bev)
+				{
+					bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+				}
 			}
-		}
-		else
-		{
-			httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
-		}
-		if (httpData->bev == NULL)
-		{
-			AppendMsg(L"bev创建失败");
-			delete httpData;
-			return;
-		}
-
-		httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
-		if (httpData->evConn == NULL)
-		{
-			AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
-			delete httpData;
-			return;
-		}
-
-		evhttp_connection_set_max_headers_size(httpData->evConn, HTTP_MAX_HEAD_SIZE);
-		evhttp_connection_set_max_body_size(httpData->evConn, HTTP_MAX_BODY_SIZE);
-		evhttp_connection_set_timeout(httpData->evConn, 1);// 设置闲置连接自动断开的超时时间(s)
-		
-		auto funReq = [httpData, eventBase]
-		{
-			auto threadID = this_thread::get_id();
-			evhttp_request* req = evhttp_request_new(OnHttpResponsePutA, httpData);
-			httpData->req = req;
-
-			// 标准Header
-			evhttp_add_header(req->output_headers, "Connection", "keep-alive");
-			evhttp_add_header(req->output_headers, "Host", "localhost");
-
-			// 自定义Header
-			const size_t bufSize = 1024; // 单次最大1GB（1024 * 1024 * 1024）
-			evhttp_add_header(req->output_headers, "bodySize", Int2Str(bufSize).c_str());
-
-			// 自定义Body数据
-			char* postBuf = new char[bufSize] {'A'};
-			evbuffer_add(req->output_buffer, postBuf, bufSize);
-			delete[] postBuf;
-
-			evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_PUT, "/api/putA?q=test&s=some+thing");
-			httpData->dlg->AppendMsg(L"evhttp_make_request");
-		};
-
-		// 创建空白定时器，以维持eventBase
-		auto funcDoNothingTimer = [](evutil_socket_t fd, short event, void* arg) {};		
-		event* ev = event_new(eventBase, -1, EV_PERSIST, funcDoNothingTimer, nullptr);
-		timeval timeout = { 0, 100 };
-		event_add(ev, &timeout);
-
-		// 间隔发送请求，模拟长连接	
-		thread([funReq, ev]
-		{
-			int num = 0;
-			do
+			else
 			{
-				funReq();
+				httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+			}
+			if (httpData->bev == NULL)
+			{
+				AppendMsg(L"bev创建失败");
+				delete httpData;
+				return;
+			}
 
-				this_thread::sleep_for(chrono::seconds(5));
+			httpData->evConn = evhttp_connection_base_bufferevent_new(eventBase, NULL, httpData->bev, host, port);
+			if (httpData->evConn == NULL)
+			{
+				AppendMsg(L"evhttp_connection_base_bufferevent_new失败");
+				delete httpData;
+				return;
+			}
 
-				num++;
-			} while (num < 5);
-			event_del(ev);
-			event_free(ev);
-		}).detach();		
+			evhttp_connection_set_max_headers_size(httpData->evConn, HTTP_MAX_HEAD_SIZE);
+			evhttp_connection_set_max_body_size(httpData->evConn, HTTP_MAX_BODY_SIZE);
+			evhttp_connection_set_timeout(httpData->evConn, 1);// 设置闲置连接自动断开的超时时间(s)
 
-		event_base_dispatch(eventBase); // 阻塞			
+			auto funReq = [httpData, eventBase]
+			{
+				auto threadID = this_thread::get_id();
+				evhttp_request* req = evhttp_request_new(OnHttpResponsePutA, httpData);
+				httpData->req = req;
 
-		// 先断开连接，后释放eventBase
-		delete httpData;
-		event_base_free(eventBase);
-		AppendMsg(L"客户端HttpPut event_base_dispatch线程 结束");
+				// 标准Header
+				evhttp_add_header(req->output_headers, "Connection", "keep-alive");
+				evhttp_add_header(req->output_headers, "Host", "localhost");
 
-	}).detach();
+				// 自定义Header
+				const size_t bufSize = 1024; // 单次最大1GB（1024 * 1024 * 1024）
+				evhttp_add_header(req->output_headers, "bodySize", Int2Str(bufSize).c_str());
+
+				// 自定义Body数据
+				char* postBuf = new char[bufSize] {'A'};
+				evbuffer_add(req->output_buffer, postBuf, bufSize);
+				delete[] postBuf;
+
+				evhttp_make_request(httpData->evConn, req, EVHTTP_REQ_PUT, "/api/putA?q=test&s=some+thing");
+				httpData->dlg->AppendMsg(L"evhttp_make_request");
+			};
+
+			// 创建空白定时器，以维持eventBase
+			auto funcDoNothingTimer = [](evutil_socket_t fd, short event, void* arg) {};
+			event* ev = event_new(eventBase, -1, EV_PERSIST, funcDoNothingTimer, nullptr);
+			timeval timeout = { 0, 100 };
+			event_add(ev, &timeout);
+
+			// 间隔发送请求，模拟长连接	
+			thread([funReq, ev]
+				{
+					int num = 0;
+					do
+					{
+						funReq();
+
+						this_thread::sleep_for(chrono::seconds(5));
+
+						num++;
+					} while (num < 5);
+					event_del(ev);
+					event_free(ev);
+				}).detach();
+
+				event_base_dispatch(eventBase); // 阻塞			
+
+				// 先断开连接，后释放eventBase
+				delete httpData;
+				event_base_free(eventBase);
+				AppendMsg(L"客户端HttpPut event_base_dispatch线程 结束");
+
+		}).detach();
 }
 
 static void OnHttpResponseDelA(evhttp_request* req, void* arg)
@@ -1750,7 +1751,7 @@ static void OnHttpResponseDelA(evhttp_request* req, void* arg)
 			evbuffer_drain(req->input_buffer, len);
 			evhttp_request_free(req);
 		}
-	}	
+	}
 
 	// 主动断开与服务器连接
 	httpData->Free();
@@ -1791,7 +1792,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 	else
 	{
 		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
-	}	
+	}
 	if (httpData->bev == NULL)
 	{
 		AppendMsg(L"bev创建失败");
