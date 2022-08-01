@@ -15,8 +15,9 @@
 
 using std::function;
 using std::future;
+using std::mutex;
 
-struct EventData;
+class EventData;
 
 class CLibeventExample_MFCDlg : public CDialogEx
 {
@@ -54,6 +55,8 @@ private:
 
 	// TCP
 	evconnlistener* _listener = nullptr;
+	EventData* _listenEventData = nullptr;
+	mutex		_mtxCurrentEventData;
 	EventData* _currentEventData = nullptr;
 
 	// UDP
@@ -68,6 +71,8 @@ private:
 public:
 	void AppendMsg(const WCHAR* msg);
 	bool IsUseSSL();
+	void OnEventDataDeleted(EventData* eventData);
+	void SetCurrentEventData(EventData* eventData);
 
 private:
 	afx_msg void OnBtnDisconnClient();
