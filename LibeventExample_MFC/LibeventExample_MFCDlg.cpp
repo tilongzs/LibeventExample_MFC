@@ -393,12 +393,25 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 
 	// 修改socket属性
 	int bufLen = SINGLE_PACKAGE_SIZE;
-	int ret = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int));
-	ret = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int));
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	{
+		return;
+	}
+	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	{
+		return;
+	}
 	linger l;
 	l.l_onoff = 1;
 	l.l_linger = 0;
-	ret = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l));
+	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l)) < 0)
+	{
+		return;
+	}
+	if (evutil_make_socket_nonblocking(sockfd) < 0)
+	{
+		return;
+	}
 
 	// 构造一个bufferevent
 	EventData* eventData = new EventData;
@@ -407,7 +420,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 	if (listenEventData->dlg->IsUseSSL())
 	{
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
-		eventData->ssl = SSL_new(eventData->ssl_ctx);
+		eventData->ssl = SSL_new(listenEventData->ssl_ctx);
 		SSL_set_fd(eventData->ssl, sockfd);
 		bev = bufferevent_openssl_socket_new(eventBase, sockfd, eventData->ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
 	}
@@ -427,7 +440,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 	eventData->dlg->SetCurrentEventData(eventData);
 
 	// 修改读写上限
-	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
+	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
 		eventData->dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
@@ -668,12 +681,25 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	evutil_socket_t sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	// 修改socket属性
 	int bufLen = SINGLE_PACKAGE_SIZE;
-	int ret = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int));
-	ret = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int));
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	{
+		return;
+	}
+	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	{
+		return;
+	}
 	linger l;
 	l.l_onoff = 1;
 	l.l_linger = 0;
-	ret = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l));
+	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l)) < 0)
+	{
+		return;
+	}
+	if (evutil_make_socket_nonblocking(sockfd) < 0)
+	{
+		return;
+	}
 
 	if (::bind(sockfd, (sockaddr*)&localAddr, sizeof(localAddr)) != 0)
 	{
@@ -724,7 +750,7 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	_currentEventData = eventData;
 
 	// 修改读写上限
-	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
+	int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
 		AppendMsg(L"bufferevent_set_max_single_read失败");
