@@ -9,6 +9,7 @@
 #define IDC_BUTTON_DISCONN_CLIENT       1001
 #define IDC_BUTTON2                     1002
 #define IDC_LIST_CLIENTS                1002
+#define IDC_BUTTON_DISCONN_WEBSOCKET_CLIENT 1002
 #define IDC_BUTTON_LISTEN               1003
 #define IDC_BUTTON_CONNECT              1004
 #define IDC_BUTTON_CREATETIMER          1005
@@ -32,6 +33,9 @@
 #define IDC_BUTTON_HTTP_DEL             1021
 #define IDC_IPADDRESS1                  1022
 #define IDC_IPADDRESS_REMOTE            1022
+#define IDC_BUTTON_WEBSOCKET_CONNECT    1023
+#define IDC_BUTTON_DISCONNECT_SERVER2   1024
+#define IDC_BUTTON_WEBSOCKET_DISCONNECT_SERVER 1024
 
 // Next default values for new objects
 // 

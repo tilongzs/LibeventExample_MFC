@@ -2,25 +2,27 @@
 #include "framework.h"
 #include "LibeventExample_MFC.h"
 #include "LibeventExample_MFCDlg.h"
-#include "afxdialogex.h"
 #include "Common/Common.h"
+#include "Common/sha1.h"
+#include "Common/base64.h"
+#include "libws.h"
 #include <afxsock.h>
-
 #include <sys/types.h>  
 #include <errno.h>  
 #include <corecrt_io.h>
 #include <thread>
-#include <chrono>
 #include <fcntl.h>
 #include <sys/stat.h>
 
 // vcpkg管理
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/sha.h>
 #include <wincrypt.h>
 /*******************************/
 
 using namespace std;
+using namespace chrono;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -175,6 +177,9 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_PUT, &CLibeventExample_MFCDlg::OnBtnHttpPut)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_POST_FILE, &CLibeventExample_MFCDlg::OnBtnHttpPostFile)
 	ON_BN_CLICKED(IDC_BUTTON_HTTP_DEL, &CLibeventExample_MFCDlg::OnBtnHttpDel)
+	ON_BN_CLICKED(IDC_BUTTON_WEBSOCKET_CONNECT, &CLibeventExample_MFCDlg::OnBtnWebsocketConnect)
+	ON_BN_CLICKED(IDC_BUTTON_WEBSOCKET_DISCONNECT_SERVER, &CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer)
+	ON_BN_CLICKED(IDC_BUTTON_DISCONN_WEBSOCKET_CLIENT, &CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -183,6 +188,8 @@ BOOL CLibeventExample_MFCDlg::OnInitDialog()
 
 	SetIcon(m_hIcon, TRUE);
 	SetIcon(m_hIcon, FALSE);
+
+	_beginTime = steady_clock::now();
 
 	_editPort.SetWindowText(L"23300");
 	_ipRemote.SetAddress(127, 0, 0, 1);
@@ -280,6 +287,60 @@ void CLibeventExample_MFCDlg::SetCurrentEventData(EventData* eventData)
 {
 	lock_guard<mutex> lock(_mtxCurrentEventData);
 	_currentEventData = eventData;
+}
+
+int CLibeventExample_MFCDlg::OnWebsocketConnect(struct libws_t* pws)
+{
+	if (_httpServer)
+	{
+		AppendMsg(L"新WebSocket客户端连接");
+
+		lock_guard<mutex> lock(_mtxListWS);
+		_listWS.emplace_back(pws);
+	}
+	else
+	{
+		AppendMsg(L"与WebSocket服务端连接");
+	}
+
+	return true;
+}
+
+int CLibeventExample_MFCDlg::OnWebsocketDisconnect(struct libws_t* pws)
+{
+	if (_httpServer)
+	{
+		AppendMsg(L"WebSocket客户端连接断开");
+
+		lock_guard<mutex> lock(_mtxListWS);
+		_listWS.remove(pws);
+	}
+	else
+	{
+		AppendMsg(L"与WebSocket服务端连接断开");
+	}
+
+	return true;
+}
+
+int CLibeventExample_MFCDlg::OnWebsocketRead(struct libws_t* pws, uint8_t* buf, size_t size)
+{
+	CString strMsg;
+	strMsg.Format(L"WebSocket收到数据 %u字节", size);
+	AppendMsg(strMsg);
+
+	return 0;
+}
+
+int CLibeventExample_MFCDlg::OnWebsocketWrite(struct libws_t* pws)
+{
+	AppendMsg(L"WebSocket写入数据完成");
+	return 0;
+}
+
+uint64_t CLibeventExample_MFCDlg::GetRunningTime()
+{
+	return duration<double, std::milli>(_beginTime - steady_clock::now()).count();
 }
 
 LRESULT CLibeventExample_MFCDlg::OnFunction(WPARAM wParam, LPARAM lParam)
@@ -1163,6 +1224,247 @@ static void OnHTTP_API_delA(evhttp_request* req, void* arg)
 	dlg->AppendMsg(strMsg);
 }
 
+static void libws_close_cb(struct evhttp_connection* conn, void* arg)
+{
+	libws_t* pws = (libws_t*)arg;
+	if (pws->disconn_cb)
+	{
+		pws->disconn_cb(pws);
+	}
+
+	delete pws;
+}
+
+static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
+{
+	uint64_t tmp;
+	size_t i, n = 0, mask_len = 0;
+	if (msg == NULL)
+		return 0;
+	if (buf == NULL)
+		return 0;
+	memset(msg, 0, sizeof(ws_msg));
+	if (len >= 2)
+	{
+		msg->flags = buf[0];
+		n = buf[1] & 0x7f;
+		mask_len = buf[1] & 0x80 ? 4 : 0;
+		if (n < 126 && len >= mask_len)
+		{
+			msg->header_len = 2 + mask_len;
+			msg->data_len = n;
+		}
+		else if (n == 126 && len >= 4 + mask_len)
+		{
+			msg->header_len = 4 + mask_len;
+			msg->data_len = buf[2];
+			msg->data_len <<= 8;
+			msg->data_len |= buf[3];
+		}
+		else if (len >= 10 + mask_len)
+		{
+			msg->header_len = 10 + mask_len;
+			tmp = buf[2];
+			tmp <<= 8;
+			tmp |= buf[3];
+			tmp <<= 8;
+			tmp |= buf[4];
+			tmp <<= 8;
+			tmp |= buf[5];
+			tmp <<= 8;
+			tmp |= buf[6];
+			tmp <<= 8;
+			tmp |= buf[7];
+			tmp <<= 8;
+			tmp |= buf[8];
+			tmp <<= 8;
+			tmp |= buf[9];
+			msg->data_len = (size_t)tmp;
+		}
+	}
+	if (msg->header_len + msg->data_len > len)
+		return 0;
+	if (mask_len > 0)
+	{
+		uint8_t* p = buf + msg->header_len, * m = p - mask_len;
+		for (i = 0; i < msg->data_len; i++)
+			p[i] ^= m[i & 3];
+	}
+	return msg->header_len + msg->data_len;
+}
+
+static void remove_conn(struct libws_t* pws)
+{
+	if (pws->disconn_cb)
+	{
+		pws->disconn_cb(pws);
+	}
+
+	evhttp_connection_free(pws->conn);
+
+	delete pws;
+}
+
+void libws_proc(struct libws_t* pws)
+{
+	uint8_t* p;
+	size_t res;
+	ev_ssize_t size;
+	struct ws_msg msg;
+	struct bufferevent* bev;
+	if (pws == NULL)
+		return;
+	if (pws->conn == NULL)
+		return;
+	bev = evhttp_connection_get_bufferevent(pws->conn);
+	for (size = 1, res = 1; res && size;)
+	{
+		size = (ev_ssize_t)evbuffer_get_length(bev->input);
+		p = evbuffer_pullup(bev->input, size);
+		res = libws_process(p, (size_t)size, &msg);
+		if (res)
+		{
+			pws->ms = pws->dlg->GetRunningTime();
+			switch (msg.flags & LIBWS_FLAGS_MASK_OP) {
+			case LIBWS_OP_CONTINUE:
+				//                call(c, LIBWS_EV_WS_CTL, &m);
+				break;
+			case LIBWS_OP_PING:
+				libws_send(pws, (uint8_t*)&p[msg.header_len], msg.data_len, LIBWS_OP_PONG);
+				//                call(c, LIBWS_EV_WS_CTL, &m);
+				break;
+			case LIBWS_OP_PONG:
+				//                call(c, LIBWS_EV_WS_CTL, &m);
+				break;
+			case LIBWS_OP_TEXT:
+			case LIBWS_OP_BINARY:
+				if (pws->rd_cb)
+					pws->rd_cb(pws, &p[msg.header_len], msg.data_len);
+				break;
+			case LIBWS_OP_CLOSE:
+				remove_conn(pws);
+				return;
+			default:
+				// Per RFC6455, close conn when an unknown op is recvd
+				remove_conn(pws);
+				return;
+			}
+			evbuffer_drain(bev->input, msg.header_len + msg.data_len);
+		}
+	}
+}
+
+static void libws_rdcb(struct bufferevent* bev, void* ctx)
+{
+	struct libws_t* p = (struct libws_t*)ctx;
+	if (p->is_active == 0)
+		return;
+	libws_proc(p);     // 解析数据
+}
+
+static void libws_wrcb(struct bufferevent* bev, void* ctx)
+{
+	struct libws_t* p = (struct libws_t*)ctx;
+	if (p->is_active == 0)
+		return;
+	if (p->wr_cb)
+		p->wr_cb(p);
+}
+
+static void libws_evcb(struct bufferevent* bev, short what, void* ctx)
+{
+	struct libws_t* pws = (struct libws_t*)ctx;
+	if (what & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
+	{
+		if (pws->disconn_cb)
+		{
+			pws->disconn_cb(pws);
+		}
+
+		delete pws;
+	}
+	return;
+}
+
+static void OnHTTP_Websocket(evhttp_request* req, void* arg)
+{
+	if (req == NULL)
+		return;
+
+	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	const char* p;
+	int ret;
+	struct bufferevent* bev;
+	char buff[256], sha1_str[20], pbase64[256];
+	const char* _magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+	
+	(void)arg;
+	p = evhttp_find_header(req->input_headers, "Upgrade");
+	if (p && libws_strcasecmp(p, "websocket"))
+	{
+		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
+		return;
+	}
+	p = evhttp_find_header(req->input_headers, "Sec-WebSocket-Version");
+	if (p && libws_strcasecmp(p, "13"))
+	{
+		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
+		return;
+	}
+	p = evhttp_find_header(req->input_headers, "Sec-WebSocket-Key");
+	if (p == NULL)
+	{
+		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
+		return;
+	}
+
+	memset(buff, 0, sizeof(buff));
+	strcpy(buff, p);
+	memcpy(&buff[strlen(buff)], _magic, strlen(_magic));
+	ret = mbedtls_sha1_ret((const uint8_t*)buff, (int)strlen(buff), (uint8_t*)sha1_str);
+	if (ret != 0)
+	{
+		evhttp_send_reply(req, HTTP_INTERNAL, "", NULL);     // SHA1错误
+		return;
+	}
+
+	struct libws_t* pws = new struct libws_t;
+	pws->dlg = dlg;
+	pws->conn = req->evcon;
+	pws->ms = dlg->GetRunningTime();
+	pws->is_active = 1;
+	pws->conn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1);
+	pws->disconn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1);
+	pws->rd_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3);
+	pws->wr_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1);
+
+	memset(pbase64, 0, sizeof(pbase64));
+	base64_encode((const uint8_t*)sha1_str, 20, pbase64);
+	sprintf(buff, "HTTP/1.1 101 Switching Protocols\r\n"
+		"Upgrade: websocket\r\n"
+		"Connection: Upgrade\r\n"
+		"Sec-WebSocket-Version: 13\r\n"
+		"Sec-WebSocket-Accept: %s\r\n"
+		"\r\n", pbase64);
+	bev = evhttp_connection_get_bufferevent(req->evcon);
+	bufferevent_enable(bev, EV_READ | EV_WRITE | EV_PERSIST);
+	bufferevent_write(bev, buff, strlen(buff));
+	evhttp_remove_header(req->output_headers, "Connection");
+	evhttp_remove_header(req->input_headers, "Connection");
+	evhttp_remove_header(req->output_headers, "Proxy-Connection");
+	evhttp_remove_header(req->input_headers, "Proxy-Connection");
+	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
+	evhttp_add_header(req->input_headers, "Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Proxy-Connection", "keep-alive");
+	evhttp_add_header(req->input_headers, "Proxy-Connection", "keep-alive");
+	evhttp_connection_set_timeout(req->evcon, -1);
+	evhttp_connection_set_closecb(req->evcon, libws_close_cb, pws);
+	bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, pws);
+	bufferevent_set_timeouts(bev, NULL, NULL);
+	
+	pws->conn_cb(pws);
+}
+
 static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
@@ -1287,6 +1589,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_cb(_httpServer, "/api/postFileA", OnHTTP_API_postFileA, this);
 	evhttp_set_cb(_httpServer, "/api/putA", OnHTTP_API_putA, this);
 	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
+	evhttp_set_cb(_httpServer, "/websocket", OnHTTP_Websocket, this);
 	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
 
 	AppendMsg(L"HTTP 服务端启动");
@@ -1376,7 +1679,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 			event_base_dispatch(eventBase); // 阻塞
 			AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
 
-			// 先断开连接，后释放eventBase
 			delete httpData;
 			event_base_free(eventBase);
 		}).detach();
@@ -1480,7 +1782,8 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	evhttp_add_header(req->output_headers, "bodySize", Int2Str(bufSize).c_str());
 
 	// 自定义Body数据
-	char* postBuf = new char[bufSize] {'A'};
+	char* postBuf = new char[bufSize];
+	memset(postBuf, 'A', bufSize);
 	evbuffer_add(req->output_buffer, postBuf, bufSize);
 	delete[] postBuf;
 
@@ -1641,7 +1944,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 			event_base_dispatch(eventBase); // 阻塞
 			AppendMsg(L"客户端HttpPost event_base_dispatch线程 结束");
 
-			// 先断开连接，后释放eventBase
 			delete httpData;
 			event_base_free(eventBase);
 		}).detach();
@@ -1887,8 +2189,51 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 			event_base_dispatch(eventBase); // 阻塞
 			AppendMsg(L"客户端HttpGet event_base_dispatch线程 结束");
 
-			// 先断开连接，后释放eventBase
 			delete httpData;
 			event_base_free(eventBase);
 		}).detach();
+}
+
+void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
+{
+	evthread_use_windows_threads();
+	event_base* eventBase = event_base_new();
+
+	CString tmpStr;
+	_editRemotePort.GetWindowText(tmpStr);
+	const int remotePort = _wtoi(tmpStr);
+
+	CString strURI;
+	strURI.Format(L"http://127.0.0.1:%d/websocket?q=test&s=some+thing", remotePort);
+	string utf8URI = UnicodeToUTF8(strURI);
+	const char* uri = utf8URI.c_str();
+
+	libws_t* pws = libws_connect(eventBase, uri,
+		bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, this, placeholders::_1),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, this, placeholders::_1),
+		this);
+	if (!pws)
+	{
+		AppendMsg(L"WebSocket客户端连接失败");
+	}
+
+	thread([&, eventBase]
+		{
+			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"客户端WebSocket event_base_dispatch线程 结束");
+			event_base_free(eventBase);
+		}).detach();
+}
+
+
+void CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer()
+{
+	// TODO: 在此添加控件通知处理程序代码
+}
+
+void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
+{
+	// TODO: 在此添加控件通知处理程序代码
 }

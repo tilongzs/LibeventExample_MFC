@@ -22,3 +22,5 @@ CString GetModuleDir();
 CString CombinePath(const CString& folder, const CString& extraPath);
 
 string Int2Str(const int& num);
+
+string Base64Encode(const char* bytes, unsigned int len);

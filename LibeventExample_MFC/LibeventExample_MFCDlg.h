@@ -1,6 +1,9 @@
 ﻿#pragma once
+#include <afxdialogex.h>
+
 #include <functional>
 #include <future>
+#include <chrono>
 
 #include "event2/event.h"
 #include "event2/thread.h"
@@ -12,12 +15,16 @@
 #include "event2/http.h"
 #include "event2/keyvalq_struct.h"
 #include "event2/http_struct.h"
+#include "event2/bufferevent_struct.h"
 
 using std::function;
 using std::future;
 using std::mutex;
+using std::chrono::steady_clock;
+using std::list;
 
 class EventData;
+struct libws_t;
 
 class CLibeventExample_MFCDlg : public CDialogEx
 {
@@ -53,6 +60,8 @@ private:
 	CButton _btnStopHttpServer;
 	CIPAddressCtrl _ipRemote;
 
+	steady_clock::time_point	_beginTime;
+
 	// TCP
 	evconnlistener* _listener = nullptr;
 	EventData* _listenEventData = nullptr;
@@ -67,12 +76,21 @@ private:
 	evhttp* _httpServer = nullptr;
 	evhttp_bound_socket* _httpSocket;
 
+	// Websocket
+	mutex			_mtxListWS;
+	list<libws_t*> _listWS;
+
 	void InitTimer();
 public:
 	void AppendMsg(const WCHAR* msg);
 	bool IsUseSSL();
 	void OnEventDataDeleted(EventData* eventData);
 	void SetCurrentEventData(EventData* eventData);
+	int OnWebsocketConnect(struct libws_t* pws);
+	int OnWebsocketDisconnect(struct libws_t* pws);
+	int OnWebsocketRead(struct libws_t* pws, uint8_t* buf, size_t size);
+	int OnWebsocketWrite(struct libws_t* pws);
+	uint64_t GetRunningTime(); // 获取软件运行时间（毫秒）
 
 private:
 	afx_msg void OnBtnDisconnClient();
@@ -87,10 +105,13 @@ private:
 	afx_msg void OnBtnUdpClose();
 	afx_msg void OnBtnHttpServer();
 	afx_msg void OnBtnStopHttpServer();
-public:
 	afx_msg void OnBtnHttpGet();
 	afx_msg void OnBtnHttpPost();
 	afx_msg void OnBtnHttpPut();
 	afx_msg void OnBtnHttpPostFile();
 	afx_msg void OnBtnHttpDel();
+	afx_msg void OnBtnWebsocketConnect();
+public:
+	afx_msg void OnBtnWebsocketDisconnectServer();
+	afx_msg void OnBtnDisconnWebsocketClient();
 };
