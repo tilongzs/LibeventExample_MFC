@@ -34,20 +34,6 @@
 
 static void libws_proc(struct libws_t *);
 
-static new_conn_cb libws_ncb;
-
-
-// 生成新的websocket连接，在应用程序里面可设置同样参数的函数替换
-struct libws_t *new_conn(struct evhttp_request *req)
-{
-    struct libws_t *pws;
-    (void)req;
-    pws = (struct libws_t *)calloc(sizeof(struct libws_t),1);
-    pws->conn=req->evcon;
-    return pws;
-}
-
-// websocket关闭
 static void libws_close_cb(struct evhttp_connection *conn, void *arg)
 {
     struct libws_t* pws = (struct libws_t*)arg;
@@ -80,10 +66,9 @@ static void libws_wrcb(struct bufferevent *bev, void *ctx)
 
 static void libws_evcb(struct bufferevent *bev, short what, void *ctx)
 {
-    if(what&(BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
+    if(what & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
     {
 		struct libws_t* pws = (struct libws_t*)ctx;
-
 		if (pws->disconn_cb)
 		{
 			pws->disconn_cb(pws);
@@ -108,74 +93,62 @@ static void remove_conn(struct libws_t* pws)
 
 static void libws_connect_cb(struct evhttp_request *req, void *arg)
 {
-    struct libws_t *p;
-    const char *ws_u, *ws_k;
-    struct bufferevent *bev;
-
-    p = (struct libws_t *)arg;
-    if(req==NULL || arg==NULL)
+    if(NULL == req || NULL == arg)
         return;
+	struct libws_t* pws = (struct libws_t*)arg;
+
     if(evbuffer_get_length(req->input_buffer))
         evbuffer_drain(req->input_buffer, evbuffer_get_length(req->input_buffer));
     if(evhttp_request_get_response_code(req)==101)     // 服务器同意升级websocket
     {
-        ws_u = evhttp_find_header(req->input_headers,"Upgrade");
-        ws_k = evhttp_find_header(req->input_headers,"Sec-WebSocket-Accept");
+        const char* ws_u = evhttp_find_header(req->input_headers,"Upgrade");
+        const char* ws_k = evhttp_find_header(req->input_headers,"Sec-WebSocket-Accept");
         if(ws_u && ws_k)
         {
             if(libws_strcasecmp(ws_u,"websocket")==0)
             {
-                short flags;
-                p->is_active = 1;
-                bev = evhttp_connection_get_bufferevent(p->conn);
-                bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, p);
-                flags = EV_PERSIST;
-//                flags |= EV_READ;
-                flags |= EV_WRITE;
-                bufferevent_enable(bev, flags);
-                evhttp_connection_set_timeout(p->conn, -1);
+                pws->is_active = 1;
+                struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
+                bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, pws);
+                bufferevent_enable(bev, EV_PERSIST | EV_WRITE);
+                evhttp_connection_set_timeout(pws->conn, -1);
                 bufferevent_set_timeouts(bev, NULL, NULL);
 #ifdef WIN32
                 {
                     int opt = 1;
-                    evutil_socket_t fd;
-                    fd = bufferevent_getfd(bev);
+                    evutil_socket_t fd = bufferevent_getfd(bev);
                     setsockopt((SOCKET)fd, SOL_SOCKET, TCP_NODELAY, (const char*)&opt, sizeof(opt));
                 }
 #endif
-                if(p->conn_cb)
-                    p->conn_cb(p);
+                if(pws->conn_cb)
+                    pws->conn_cb(pws);
                 return;                 // 正常接入返回
             }
         }
     }
     // 服务器不正常返回，删除掉结构体
-    remove_conn(p);
+    remove_conn(pws);
 }
 
 static void libws_error_cb(enum evhttp_request_error error, void* arg)
 {
-    struct libws_t *p;
-   // LOG(LL_NONE, ("error with %X",error));
-    if(arg==NULL)
+    if(NULL == arg)
         return;
-    p=(struct libws_t*)arg;
-    libws_close_cb(NULL, p);
+    libws_close_cb(NULL, arg); //  (struct libws_t*)arg
 }
 
 static size_t libws_process(uint8_t *buf, size_t len, struct ws_msg *msg)
 {
-    uint64_t tmp;
-    size_t i, n = 0, mask_len = 0;
-    if(msg==NULL)
+    if(NULL == msg)
         return 0;
-    if(buf==NULL)
+    if(NULL == buf)
         return 0;
     memset(msg, 0, sizeof(ws_msg));
+    size_t mask_len = 0;
     if (len >= 2)
     {
         msg->flags = buf[0];
-        n = buf[1] & 0x7f;
+        size_t n = buf[1] & 0x7f;
         mask_len = buf[1] & 0x80 ? 4 : 0;
         if (n < 126 && len >= mask_len)
         {
@@ -192,7 +165,7 @@ static size_t libws_process(uint8_t *buf, size_t len, struct ws_msg *msg)
         else if (len >= 10 + mask_len)
         {
             msg->header_len = 10 + mask_len;
-            tmp = buf[2];
+            uint64_t tmp = buf[2];
             tmp <<= 8;
             tmp |= buf[3];
             tmp <<= 8;
@@ -215,7 +188,7 @@ static size_t libws_process(uint8_t *buf, size_t len, struct ws_msg *msg)
     if (mask_len > 0)
     {
         uint8_t *p = buf + msg->header_len, *m = p - mask_len;
-        for (i = 0; i < msg->data_len; i++)
+        for (size_t i = 0; i < msg->data_len; i++)
             p[i] ^= m[i & 3];
     }
     return msg->header_len + msg->data_len;
@@ -223,17 +196,17 @@ static size_t libws_process(uint8_t *buf, size_t len, struct ws_msg *msg)
 
 void libws_proc(struct libws_t *pws)
 {
-    uint8_t *p;
-    size_t res;
-    ev_ssize_t size;
-    struct ws_msg msg;
-    struct bufferevent *bev;
-    if(pws==NULL)
+    if(NULL == pws)
         return;
-    if(pws->conn==NULL)
+    if(NULL == pws->conn)
         return;
-    bev=evhttp_connection_get_bufferevent(pws->conn);
-    for(size=1,res=1;res&&size;)
+
+    struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
+	struct ws_msg msg;
+	uint8_t* p;
+	size_t res;
+	ev_ssize_t size;
+    for(size=1,res=1; res&&size;)
     {
         size = (ev_ssize_t)evbuffer_get_length(bev->input);
         p=evbuffer_pullup(bev->input, size);
@@ -243,14 +216,11 @@ void libws_proc(struct libws_t *pws)
             pws->ms = pws->dlg->GetRunningTime();
             switch (msg.flags & LIBWS_FLAGS_MASK_OP) {
               case LIBWS_OP_CONTINUE:
-//                call(c, LIBWS_EV_WS_CTL, &m);
                 break;
               case LIBWS_OP_PING:
                 libws_send(pws, (uint8_t*)&p[msg.header_len], msg.data_len,LIBWS_OP_PONG);
-//                call(c, LIBWS_EV_WS_CTL, &m);
                 break;
               case LIBWS_OP_PONG:
-//                call(c, LIBWS_EV_WS_CTL, &m);
                 break;
               case LIBWS_OP_TEXT:
               case LIBWS_OP_BINARY:
@@ -270,27 +240,23 @@ void libws_proc(struct libws_t *pws)
     }
 }
 
-int libws_send(struct libws_t*pws, uint8_t*pdata, size_t size, uint8_t op)
+int libws_send(struct libws_t* pws, uint8_t*pdata, size_t size, uint8_t op)
 {
-    uint8_t header[10];
-    uint8_t mask[4];
-    size_t i;
-    size_t header_len = 0;
-    struct bufferevent *bev;
-    uint8_t *p;
-
-    if(pws==NULL)
+    if(NULL == pws)
         return -1;
     if(pdata==NULL)
         return -2;
     if(size==0)
         return -3;
-    if(pws->conn==NULL)   // 未连接成功
+    if(NULL == pws->conn)   // 未连接成功
         return -4;
     if(pws->is_active==0) // 连接无效
         return -5;
     pws->ms = pws->dlg->GetRunningTime();
-    bev=evhttp_connection_get_bufferevent(pws->conn);
+    struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
+
+	size_t header_len = 0;
+	uint8_t header[10];
     header[0]=op;
     if(pws->fin)
         header[0]|=LIBWS_FLAGS_MASK_FIN;
@@ -326,8 +292,10 @@ int libws_send(struct libws_t*pws, uint8_t*pdata, size_t size, uint8_t op)
 
     bufferevent_write(bev, header, header_len);
 
-    p = (uint8_t*)malloc(size);
+    uint8_t* p = (uint8_t*)malloc(size);
     memcpy(p, pdata, size);
+
+	uint8_t mask[4];
     if(pws->is_client)
     {
         mask[0]=rand()&0xff;
@@ -336,7 +304,7 @@ int libws_send(struct libws_t*pws, uint8_t*pdata, size_t size, uint8_t op)
         mask[3]=rand()&0xff;
         bufferevent_write(bev, mask, 4);
         header_len += sizeof(mask);
-        for(i=0; i<size; i++)
+        for(size_t i=0; i<size; i++)
             p[i] ^= mask[i&3];
     }
     bufferevent_write(bev,p,size);
@@ -352,39 +320,23 @@ struct libws_t *libws_connect(struct event_base *base,
 	function<int(struct libws_t*)> wr_cb,\
     CLibeventExample_MFCDlg* dlg)
 {
-    char nonce[16];
-    char key[256];
-    struct evhttp_uri *uri;
-    const char *query, *path, *host;
-    char *request_url;
-    int port;
-    size_t i;
-    size_t nlen;
-
-    struct evhttp_request *req;
-    struct evhttp_connection *evcon;
-    struct bufferevent *bev;
-    struct libws_t *pws;
-    const int flags = BEV_OPT_THREADSAFE|BEV_OPT_CLOSE_ON_FREE;
-
     if(url==NULL)
         return NULL;
     if(base==NULL)
         return NULL;
-    uri = evhttp_uri_parse(url);
+    struct evhttp_uri* uri = evhttp_uri_parse(url);
     if(!uri)
     {
-       // LOG(LL_NONE, ("bad url = \"%s\"", url));
         return NULL;
     }
-    host = evhttp_uri_get_host(uri);
-    port = evhttp_uri_get_port(uri);
+    const char* host = evhttp_uri_get_host(uri);
+    int port = evhttp_uri_get_port(uri);
     if (port < 0) port = 80;
-    query = evhttp_uri_get_query(uri);
-    path = evhttp_uri_get_path(uri);
-    nlen=(query ? strlen(query) : 0) + (path ? strlen(path) : 0) + 8;
+    const char* query = evhttp_uri_get_query(uri);
+    const char* path = evhttp_uri_get_path(uri);
+    size_t nlen = (query ? strlen(query) : 0) + (path ? strlen(path) : 0) + 8;
 
-    request_url = (char*)calloc(nlen, 1);
+    char* request_url = (char*)calloc(nlen, 1);
     if(!path)
         sprintf(request_url, "/");
     else if(strlen(path)==0)
@@ -394,22 +346,21 @@ struct libws_t *libws_connect(struct event_base *base,
     else
         sprintf(request_url, "%s", path);
 
-    bev = bufferevent_socket_new(base,-1,flags);
-    if(bev==NULL)
+    struct bufferevent* bev = bufferevent_socket_new(base, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
+    if(NULL == bev)
     {
         free(request_url);
-      //  LOG(LL_NONE, ("creat bufferevent error,  url = \"%s\"", url));
-        return NULL;
-    }
-    evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev, host, (uint16_t)(port));
-    if(evcon==NULL)
-    {
-        free(request_url);
-   //     LOG(LL_NONE, ("connot start http conn,  url = \"%s\"", url));
         return NULL;
     }
 
-    pws = new struct libws_t;
+    struct evhttp_connection* evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev, host, (uint16_t)(port));
+    if(NULL == evcon)
+    {
+        free(request_url);
+        return NULL;
+    }
+
+    struct libws_t* pws = new struct libws_t;
     memset(pws, 0, sizeof(libws_t));
     pws->dlg = dlg;
 	pws->conn = evcon;
@@ -420,7 +371,7 @@ struct libws_t *libws_connect(struct event_base *base,
     pws->ms = dlg->GetRunningTime();
     pws->is_client = 1;
 
-    req = evhttp_request_new(libws_connect_cb, pws);
+    struct evhttp_request* req = evhttp_request_new(libws_connect_cb, pws);
     evhttp_request_set_error_cb(req, libws_error_cb);
     evhttp_add_header(req->output_headers, "Host", host);
     evhttp_add_header(req->output_headers, "Upgrade", "websocket");
@@ -428,7 +379,10 @@ struct libws_t *libws_connect(struct event_base *base,
     evhttp_remove_header(req->output_headers, "Proxy-Connection");
     evhttp_add_header(req->output_headers, "Proxy-Connection", "keep-alive");
     evhttp_add_header(req->output_headers, "Sec-WebSocket-Version", "13");
-    for(i=0;i<sizeof(nonce)/sizeof(nonce[0]);i++)
+
+	char nonce[16];
+	char key[256];
+    for(size_t i=0;i<sizeof(nonce)/sizeof(nonce[0]);i++)
         nonce[i]=(char)(rand()&0xff);
     memset(key, 0, sizeof(key));
     base64_encode((const uint8_t*)nonce, sizeof(nonce),key);

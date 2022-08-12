@@ -45,22 +45,19 @@ extern "C"
 #define LIBWS_FLAGS_MASK_FIN 128
 #define LIBWS_FLAGS_MASK_OP 15
 
-
-struct libws_t;
-typedef struct libws_t *(*new_conn_cb)(struct evhttp_request *req);
-
 struct libws_t
 {
     CLibeventExample_MFCDlg* dlg = nullptr;
-    function<int(struct libws_t*)> conn_cb = nullptr;
-    function<int(struct libws_t*)> disconn_cb = nullptr;
-    function<int(struct libws_t*, uint8_t*, size_t)> rd_cb = nullptr;
-    function<int(struct libws_t*)> wr_cb = nullptr;
     struct evhttp_connection *conn = nullptr;
     uint64_t ms = 0;
     int is_active:1 = 0;     // 是否可用
     int is_client:1 = 0;     // 是不是客户端，用来发送MASK位
     int fin:1 = 0;           // FIN位
+
+	function<int(struct libws_t*)> conn_cb = nullptr;
+	function<int(struct libws_t*)> disconn_cb = nullptr;
+	function<int(struct libws_t*, uint8_t*, size_t)> rd_cb = nullptr;
+	function<int(struct libws_t*)> wr_cb = nullptr;
 };
 
 int libws_send(struct libws_t*pws, uint8_t*pdata, size_t size, uint8_t op);
