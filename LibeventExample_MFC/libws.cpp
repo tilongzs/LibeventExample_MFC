@@ -69,26 +69,9 @@ static void libws_evcb(struct bufferevent *bev, short what, void *ctx)
     if(what & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
     {
 		struct libws_t* pws = (struct libws_t*)ctx;
-		if (pws->disconn_cb)
-		{
-			pws->disconn_cb(pws);
-		}
-
-		delete pws;
+        evhttp_connection_free(pws->conn);
     }
     return;
-}
-
-static void remove_conn(struct libws_t* pws)
-{
-	if (pws->disconn_cb)
-	{
-		pws->disconn_cb(pws);
-	}
-
-    evhttp_connection_free(pws->conn);
-
-	delete pws;
 }
 
 static void libws_connect_cb(struct evhttp_request *req, void *arg)
@@ -127,7 +110,7 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
         }
     }
     // 服务器不正常返回，删除掉结构体
-    remove_conn(pws);
+    evhttp_connection_free(pws->conn);
 }
 
 static void libws_error_cb(enum evhttp_request_error error, void* arg)
@@ -228,11 +211,11 @@ void libws_proc(struct libws_t *pws)
                     pws->rd_cb(pws, &p[msg.header_len], msg.data_len);
                 break;
               case LIBWS_OP_CLOSE:
-                remove_conn(pws);
+                evhttp_connection_free(pws->conn);
                 return;
               default:
                 // Per RFC6455, close conn when an unknown op is recvd
-                remove_conn(pws);
+                evhttp_connection_free(pws->conn);
                 return;
             }
             evbuffer_drain(bev->input, msg.header_len + msg.data_len);
@@ -420,7 +403,7 @@ struct libws_t *libws_connect(struct event_base *base,
 //             LOG(LL_NONE, ("time-out close"));
 //             q = p;
 //             p = p->next;
-//             remove_conn(q);
+//             libws_close_cb( nullptr, q);
 //             continue;
 //         }
 //         p = p->next;
