@@ -109,8 +109,11 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
             }
         }
     }
-    // 服务器不正常返回，删除掉结构体
-    evhttp_connection_free(pws->conn);
+    else
+    {
+		// 服务器不正常返回，断开连接
+		evhttp_connection_free(pws->conn);
+    }
 }
 
 static void libws_error_cb(enum evhttp_request_error error, void* arg)
@@ -223,7 +226,7 @@ void libws_proc(struct libws_t *pws)
     }
 }
 
-int libws_send(struct libws_t* pws, uint8_t*pdata, size_t size, uint8_t op)
+int libws_send(struct libws_t* pws, uint8_t* pdata, size_t size, uint8_t op)
 {
     if(NULL == pws)
         return -1;
@@ -273,7 +276,10 @@ int libws_send(struct libws_t* pws, uint8_t*pdata, size_t size, uint8_t op)
     if(pws->is_client)
         header[1]|=0x80;   // 客户端必须MASK
 
-    bufferevent_write(bev, header, header_len);
+    if (0 != bufferevent_write(bev, header, header_len))
+    {
+        return -6;
+    }
 
     uint8_t* p = (uint8_t*)malloc(size);
     memcpy(p, pdata, size);
@@ -290,9 +296,17 @@ int libws_send(struct libws_t* pws, uint8_t*pdata, size_t size, uint8_t op)
         for(size_t i=0; i<size; i++)
             p[i] ^= mask[i&3];
     }
-    bufferevent_write(bev,p,size);
-    free(p);
-    return (int)(header_len+size);
+
+    if (0 != bufferevent_write(bev, p, size))
+    {
+        free(p);
+        return -7;
+    }
+    else
+    {
+		free(p);
+		return (int)(header_len + size);
+    }
 }
 
 struct libws_t *libws_connect(struct event_base *base,

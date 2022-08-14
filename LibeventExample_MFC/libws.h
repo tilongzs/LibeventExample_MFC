@@ -60,7 +60,7 @@ struct libws_t
 	function<int(struct libws_t*)> wr_cb = nullptr;
 };
 
-int libws_send(struct libws_t*pws, uint8_t*pdata, size_t size, uint8_t op);
+int libws_send(struct libws_t* pws, uint8_t* pdata, size_t size, uint8_t op);
 struct libws_t *libws_connect(struct event_base *base,
                             const char *url,
                             function<int(struct libws_t*)> conn_cb,

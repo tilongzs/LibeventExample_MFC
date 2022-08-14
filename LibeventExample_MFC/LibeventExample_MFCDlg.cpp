@@ -294,15 +294,14 @@ int CLibeventExample_MFCDlg::OnWebsocketConnect(struct libws_t* pws)
 	if (_httpServer)
 	{
 		AppendMsg(L"新WebSocket客户端连接");
-
-		lock_guard<mutex> lock(_mtxListWS);
-		_listWS.emplace_back(pws);
 	}
 	else
 	{
 		AppendMsg(L"与WebSocket服务端连接");
 	}
-
+	
+	_currentWS = pws;
+	_isWebsocket = true;
 	return true;
 }
 
@@ -311,14 +310,17 @@ int CLibeventExample_MFCDlg::OnWebsocketDisconnect(struct libws_t* pws)
 	if (_httpServer)
 	{
 		AppendMsg(L"WebSocket客户端连接断开");
-
-		lock_guard<mutex> lock(_mtxListWS);
-		_listWS.remove(pws);
 	}
 	else
 	{
 		AppendMsg(L"与WebSocket服务端连接断开");
 	}
+
+	if (_currentWS == pws)
+	{
+		_currentWS = nullptr;
+	}
+	_isWebsocket = false;
 
 	return true;
 }
@@ -410,14 +412,13 @@ static void OnServerRead(bufferevent* bev, void* param)
 	size_t sz = evbuffer_get_length(input);
 	if (sz > 0)
 	{
-		char* buffer = new char[sz] {0};
-		bufferevent_read(bev, buffer, sz);
+		uint8_t* inputData = evbuffer_pullup(input, sz);
 
 		CString tmpStr;
 		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
 		eventData->dlg->AppendMsg(tmpStr);
 
-		delete[] buffer;
+		evbuffer_drain(input, sz);
 	}
 }
 
@@ -650,14 +651,13 @@ static void OnClientRead(bufferevent* bev, void* param)
 	size_t sz = evbuffer_get_length(input);
 	if (sz > 0)
 	{
-		char* buffer = new char[sz] {0};
-		bufferevent_read(bev, buffer, sz);
+		uint8_t* inputData = evbuffer_pullup(input, sz);
 
 		CString tmpStr;
 		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
 		eventData->dlg->AppendMsg(tmpStr);
 
-		delete[] buffer;
+		evbuffer_drain(input, sz);
 	}
 }
 
@@ -846,24 +846,41 @@ void CLibeventExample_MFCDlg::OnBtnDisconnectServer()
 
 void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
-	thread([&] {
-		if (_currentEventData)
-		{
-			// 		char* msg = new char[]("hello libevent");
+	thread([&] 
+	{
+			// 		uint8_t* msg = new uint8_t[]("hello libevent");
 			// 		int len = strlen(msg);
 
-			const int len = 1024 * 1024;
-			char* msg = new char[len] {0};
+			const int len = 1024 * 10;
+			uint8_t* msg = new uint8_t[len]{ 0 };
+			memset(msg, 'T', len);
 
-			int ret = bufferevent_write(_currentEventData->bev, msg, len);
-			if (ret != 0)
+			if (_isWebsocket)
 			{
-				AppendMsg(L"发送数据失败");
+				if (_currentWS)
+				{
+					int ret = libws_send(_currentWS, msg, len, LIBWS_OP_BINARY);
+					if (ret <= 0)
+					{
+						AppendMsg(L"发送数据失败");
+					}
+				}
+			}
+			else
+			{
+				if (_currentEventData)
+				{
+					int ret = bufferevent_write(_currentEventData->bev, msg, len);
+					if (ret != 0)
+					{
+						AppendMsg(L"发送数据失败");
+					}
+				}
 			}
 
+
 			delete[] msg;
-		}
-		}).detach();
+	}).detach();
 }
 
 static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
@@ -1293,18 +1310,6 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 	return msg->header_len + msg->data_len;
 }
 
-static void remove_conn(struct libws_t* pws)
-{
-	if (pws->disconn_cb)
-	{
-		pws->disconn_cb(pws);
-	}
-
-	evhttp_connection_free(pws->conn);
-
-	delete pws;
-}
-
 void libws_proc(struct libws_t* pws)
 {
 	uint8_t* p;
@@ -1342,11 +1347,11 @@ void libws_proc(struct libws_t* pws)
 					pws->rd_cb(pws, &p[msg.header_len], msg.data_len);
 				break;
 			case LIBWS_OP_CLOSE:
-				remove_conn(pws);
+				evhttp_connection_free(pws->conn);
 				return;
 			default:
 				// Per RFC6455, close conn when an unknown op is recvd
-				remove_conn(pws);
+				evhttp_connection_free(pws->conn);
 				return;
 			}
 			evbuffer_drain(bev->input, msg.header_len + msg.data_len);

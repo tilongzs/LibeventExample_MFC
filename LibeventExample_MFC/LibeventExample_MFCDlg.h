@@ -77,8 +77,8 @@ private:
 	evhttp_bound_socket* _httpSocket;
 
 	// Websocket
-	mutex			_mtxListWS;
-	list<libws_t*> _listWS;
+	bool			_isWebsocket = false;
+	libws_t*		_currentWS;
 
 	void InitTimer();
 public:
