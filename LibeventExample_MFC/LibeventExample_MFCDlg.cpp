@@ -1310,61 +1310,56 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 	return msg->header_len + msg->data_len;
 }
 
-void libws_proc(struct libws_t* pws)
+static void libws_rdcb(struct bufferevent* bev, void* ctx)
 {
-	uint8_t* p;
-	size_t res;
-	ev_ssize_t size;
+	struct libws_t* pws = (struct libws_t*)ctx;
+	if (pws->is_active == 0)
+		return;
+	
 	struct ws_msg msg;
-	struct bufferevent* bev;
-	if (pws == NULL)
-		return;
-	if (pws->conn == NULL)
-		return;
-	bev = evhttp_connection_get_bufferevent(pws->conn);
-	for (size = 1, res = 1; res && size;)
+	struct evbuffer* input = bufferevent_get_input(bev);
+	size_t bufSize = evbuffer_get_length(input);
+
+	uint8_t* buf = new uint8_t[bufSize];
+	size_t readSize = evbuffer_remove(input, buf, bufSize);
+	if (readSize > 0)
 	{
-		size = (ev_ssize_t)evbuffer_get_length(bev->input);
-		p = evbuffer_pullup(bev->input, size);
-		res = libws_process(p, (size_t)size, &msg);
+		size_t res = libws_process(buf, (size_t)bufSize, &msg);
 		if (res)
 		{
 			pws->ms = pws->dlg->GetRunningTime();
-			switch (msg.flags & LIBWS_FLAGS_MASK_OP) {
-			case LIBWS_OP_CONTINUE:
-				//                call(c, LIBWS_EV_WS_CTL, &m);
-				break;
-			case LIBWS_OP_PING:
-				libws_send(pws, (uint8_t*)&p[msg.header_len], msg.data_len, LIBWS_OP_PONG);
-				//                call(c, LIBWS_EV_WS_CTL, &m);
-				break;
-			case LIBWS_OP_PONG:
-				//                call(c, LIBWS_EV_WS_CTL, &m);
-				break;
-			case LIBWS_OP_TEXT:
-			case LIBWS_OP_BINARY:
-				if (pws->rd_cb)
-					pws->rd_cb(pws, &p[msg.header_len], msg.data_len);
-				break;
-			case LIBWS_OP_CLOSE:
-				evhttp_connection_free(pws->conn);
+			switch (msg.flags & LIBWS_FLAGS_MASK_OP)
+			{
+				case LIBWS_OP_CONTINUE:
+					//                call(c, LIBWS_EV_WS_CTL, &m);
+					break;
+				case LIBWS_OP_PING:
+					libws_send(pws, &buf[msg.header_len], msg.data_len, LIBWS_OP_PONG);
+					//                call(c, LIBWS_EV_WS_CTL, &m);
+					break;
+				case LIBWS_OP_PONG:
+					//                call(c, LIBWS_EV_WS_CTL, &m);
+					break;
+				case LIBWS_OP_TEXT:
+				case LIBWS_OP_BINARY:
+					if (pws->rd_cb)
+						pws->rd_cb(pws, &buf[msg.header_len], msg.data_len);
+					break;
+				case LIBWS_OP_CLOSE:
+				{
+					evhttp_connection_free(pws->conn);
+				}
 				return;
-			default:
-				// Per RFC6455, close conn when an unknown op is recvd
-				evhttp_connection_free(pws->conn);
-				return;
+				default:
+				{
+					// Per RFC6455, close conn when an unknown op is recvd
+					evhttp_connection_free(pws->conn);
+				}
 			}
-			evbuffer_drain(bev->input, msg.header_len + msg.data_len);
 		}
-	}
-}
 
-static void libws_rdcb(struct bufferevent* bev, void* ctx)
-{
-	struct libws_t* p = (struct libws_t*)ctx;
-	if (p->is_active == 0)
-		return;
-	libws_proc(p);     // 解析数据
+		delete[] buf;
+	}
 }
 
 static void libws_wrcb(struct bufferevent* bev, void* ctx)
@@ -1399,8 +1394,7 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 	const char* p;
 	int ret;
-	struct bufferevent* bev;
-	char buff[256], sha1_str[20], pbase64[256];
+	char buf[256], sha1_str[20], pbase64[256];
 	const char* _magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	
 	(void)arg;
@@ -1423,10 +1417,10 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 		return;
 	}
 
-	memset(buff, 0, sizeof(buff));
-	strcpy(buff, p);
-	memcpy(&buff[strlen(buff)], _magic, strlen(_magic));
-	ret = mbedtls_sha1_ret((const uint8_t*)buff, (int)strlen(buff), (uint8_t*)sha1_str);
+	memset(buf, 0, sizeof(buf));
+	strcpy(buf, p);
+	memcpy(&buf[strlen(buf)], _magic, strlen(_magic));
+	ret = mbedtls_sha1_ret((const uint8_t*)buf, (int)strlen(buf), (uint8_t*)sha1_str);
 	if (ret != 0)
 	{
 		evhttp_send_reply(req, HTTP_INTERNAL, "", NULL);     // SHA1错误
@@ -1445,15 +1439,28 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 
 	memset(pbase64, 0, sizeof(pbase64));
 	base64_encode((const uint8_t*)sha1_str, 20, pbase64);
-	sprintf(buff, "HTTP/1.1 101 Switching Protocols\r\n"
+	sprintf(buf, "HTTP/1.1 101 Switching Protocols\r\n"
 		"Upgrade: websocket\r\n"
 		"Connection: Upgrade\r\n"
 		"Sec-WebSocket-Version: 13\r\n"
 		"Sec-WebSocket-Accept: %s\r\n"
 		"\r\n", pbase64);
-	bev = evhttp_connection_get_bufferevent(req->evcon);
+	struct bufferevent* bev = evhttp_connection_get_bufferevent(req->evcon);
 	bufferevent_enable(bev, EV_READ | EV_WRITE | EV_PERSIST);
-	bufferevent_write(bev, buff, strlen(buff));
+
+	// 修改读写上限
+	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
+	if (ret != 0)
+	{
+		dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
+	}
+	ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
+	if (ret != 0)
+	{
+		dlg->AppendMsg(L"bufferevent_set_max_single_write失败");
+	}
+
+	bufferevent_write(bev, buf, strlen(buf));
 	evhttp_remove_header(req->output_headers, "Connection");
 	evhttp_remove_header(req->input_headers, "Connection");
 	evhttp_remove_header(req->output_headers, "Proxy-Connection");

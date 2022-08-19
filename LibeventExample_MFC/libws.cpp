@@ -105,7 +105,6 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
 #endif
                 if(pws->conn_cb)
                     pws->conn_cb(pws);
-                return;                 // 正常接入返回
             }
         }
     }
