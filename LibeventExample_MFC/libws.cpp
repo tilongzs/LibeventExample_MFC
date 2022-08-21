@@ -32,6 +32,8 @@
 #include <queue>
 #include "LibeventExample_MFCDlg.h"
 
+#define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
+
 static void libws_proc(struct libws_t *);
 
 static void libws_close_cb(struct evhttp_connection *conn, void *arg)
@@ -50,7 +52,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 {
     struct libws_t* p = (struct libws_t*)ctx;
 
-    if(p->is_active==0)
+    if(p->is_active == false)
         return;
     libws_proc(p);     // 解析数据
 }
@@ -58,7 +60,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 static void libws_wrcb(struct bufferevent *bev, void *ctx)
 {
     struct libws_t* p = (struct libws_t*)ctx;
-    if(p->is_active==0)
+    if(p->is_active == false)
         return;
     if(p->wr_cb)
         p->wr_cb(p);
@@ -90,11 +92,24 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
         {
             if(libws_strcasecmp(ws_u,"websocket")==0)
             {
-                pws->is_active = 1;
+                pws->is_active = true;
                 struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
-                bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, pws);
-                bufferevent_enable(bev, EV_PERSIST | EV_WRITE);
+
+                // 修改读写上限
+                int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
+                if (ret != 0)
+                {
+                    pws->dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
+                }
+                ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
+                if (ret != 0)
+                {
+                    pws->dlg->AppendMsg(L"bufferevent_set_max_single_write失败");
+                }
+
+                bufferevent_enable(bev, EV_PERSIST | EV_READ | EV_WRITE);
                 evhttp_connection_set_timeout(pws->conn, -1);
+				bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, pws);
                 bufferevent_set_timeouts(bev, NULL, NULL);
 #ifdef WIN32
                 {
@@ -225,13 +240,55 @@ void libws_proc(struct libws_t *pws)
     }
 }
 
-int libws_send(struct libws_t* pws, uint8_t* pdata, size_t size, uint8_t op)
+static void mkrandom(void* buf, size_t len)
+{
+    srand(NULL);
+    unsigned char* p = (unsigned char*)buf;
+    while (len--) *p++ = (unsigned char)(rand() & 255);
+}
+
+static size_t makeHeader(size_t len, int op, bool is_client, uint8_t* buf) 
+{
+	size_t n = 0;
+	buf[0] = (uint8_t)(op | 128);
+	if (len < 126) {
+		buf[1] = (unsigned char)len;
+		n = 2;
+	}
+	else if (len < 65536) 
+    {
+		uint16_t tmp = htons((uint16_t)len);
+		buf[1] = 126;
+		memcpy(&buf[2], &tmp, sizeof(tmp));
+		n = 4;
+	}
+	else
+    {
+		uint32_t tmp;
+		buf[1] = 127;
+		tmp = htonl((uint32_t)((uint64_t)len >> 32));
+		memcpy(&buf[2], &tmp, sizeof(tmp));
+		tmp = htonl((uint32_t)(len & 0xffffffff));
+		memcpy(&buf[6], &tmp, sizeof(tmp));
+		n = 10;
+	}
+
+	if (is_client) 
+    {
+        buf[1] |= 0x80;
+        mkrandom(&buf[n], 4);
+		n += 4;
+	}
+	return n;
+}
+
+int libws_send(struct libws_t* pws, uint8_t* pdata, size_t dataSize, uint8_t op)
 {
     if(NULL == pws)
         return -1;
     if(pdata==NULL)
         return -2;
-    if(size==0)
+    if(dataSize==0)
         return -3;
     if(NULL == pws->conn)   // 未连接成功
         return -4;
@@ -240,72 +297,74 @@ int libws_send(struct libws_t* pws, uint8_t* pdata, size_t size, uint8_t op)
     pws->ms = pws->dlg->GetRunningTime();
     struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
 
-	size_t header_len = 0;
-	uint8_t header[10];
-    header[0]=op;
-    if(pws->fin)
-        header[0]|=LIBWS_FLAGS_MASK_FIN;
-    if (size < 126)
-    {
-        header[1] = (uint8_t) size;
-        header_len = 2;
-    }
-    else if (size < 65536)
-    {
-        header[1] = 126;
-        header[2] = (uint8_t)((size>>8)&0xff);
-        header[3] = (uint8_t)((size>>0)&0xff);
-        header_len = 4;
-    }
-    else
-    {
-        uint32_t tmp;
-        header[1] = 127;
-        tmp=(uint32_t)((uint64_t) size >> 32);
-        header[2] = (uint8_t)((tmp>>24)&0xff);
-        header[3] = (uint8_t)((tmp>>16)&0xff);
-        header[4] = (uint8_t)((tmp>>8)&0xff);
-        header[5] = (uint8_t)((tmp>>0)&0xff);
-        header[6] = (uint8_t)((size>>24)&0xff);
-        header[7] = (uint8_t)((size>>16)&0xff);
-        header[8] = (uint8_t)((size>>8)&0xff);
-        header[9] = (uint8_t)((size>>0)&0xff);
-        header_len = 10;
-    }
-    if(pws->is_client)
-        header[1]|=0x80;   // 客户端必须MASK
+    struct evbuffer* evBuf = evbuffer_new();
 
-    if (0 != bufferevent_write(bev, header, header_len))
+	uint8_t header[14] = {0};
+	size_t headerSize = makeHeader(dataSize, op, pws->is_client, header);
+    if (0 != evbuffer_add(evBuf, header, headerSize))
     {
+        evbuffer_free(evBuf);
         return -6;
     }
 
-    uint8_t* p = (uint8_t*)malloc(size);
-    memcpy(p, pdata, size);
+   // uint8_t* buf = (uint8_t*)malloc(dataSize);
+   // memcpy(buf, pdata, dataSize);
+	if (0 != evbuffer_add(evBuf, pdata, dataSize))
+	{
+		evbuffer_free(evBuf);
+		return -6;
+	}
 
-	uint8_t mask[4];
-    if(pws->is_client)
+    if (pws->is_client)
     {
-        mask[0]=rand()&0xff;
-        mask[1]=rand()&0xff;
-        mask[2]=rand()&0xff;
-        mask[3]=rand()&0xff;
-        bufferevent_write(bev, mask, 4);
-        header_len += sizeof(mask);
-        for(size_t i=0; i<size; i++)
-            p[i] ^= mask[i&3];
+		size_t evBufSize = evbuffer_get_length(evBuf);
+		uint8_t* buf = evbuffer_pullup(evBuf, evBufSize);
+		size_t i;
+        uint8_t* p = buf + evBufSize - dataSize;
+        uint8_t* mask = p - 4;
+		for (i = 0; i < dataSize; i++) 
+            p[i] ^= mask[i & 3];
     }
 
-    if (0 != bufferevent_write(bev, p, size))
-    {
-        free(p);
-        return -7;
-    }
-    else
-    {
-		free(p);
-		return (int)(header_len + size);
-    }
+
+
+// 	uint8_t mask[4];
+//     if(pws->is_client)
+// 	{
+//         srand(NULL);
+// 		mask[0] = rand() & 0xff;
+// 		mask[1] = rand() & 0xff;
+// 		mask[2] = rand() & 0xff;
+// 		mask[3] = rand() & 0xff;
+// 
+// 		if (0 != evbuffer_add(evBuf, mask, 4))
+// 		{
+// 			evbuffer_free(evBuf);
+// 			return -6;
+// 		}
+// 
+// //        header_len += sizeof(mask);
+//         for(size_t i=0; i<dataSize; i++)
+//             buf[i] ^= mask[i&3];
+//     }
+
+// 	if (0 != evbuffer_add(evBuf, buf, dataSize))
+// 	{
+// 		evbuffer_free(evBuf);
+// 		return -6;
+// 	}
+
+	if (0 != bufferevent_write_buffer(bev, evBuf))
+	{
+    //    free(buf);
+        evbuffer_free(evBuf);
+		return -7;
+	}
+	else
+	{
+	//	free(buf);
+		return (int)(headerSize + dataSize);
+	}
 }
 
 struct libws_t *libws_connect(struct event_base *base,
@@ -313,7 +372,7 @@ struct libws_t *libws_connect(struct event_base *base,
 	function<int(struct libws_t*)> conn_cb,
 	function<int(struct libws_t*)> disconn_cb,
 	function<int(struct libws_t*, uint8_t*, size_t)> rd_cb,
-	function<int(struct libws_t*)> wr_cb,\
+	function<int(struct libws_t*)> wr_cb,
     CLibeventExample_MFCDlg* dlg)
 {
     if(url==NULL)
@@ -365,7 +424,7 @@ struct libws_t *libws_connect(struct event_base *base,
     pws->rd_cb = rd_cb;
     pws->wr_cb = wr_cb;
     pws->ms = dlg->GetRunningTime();
-    pws->is_client = 1;
+    pws->is_client = true;
 
     struct evhttp_request* req = evhttp_request_new(libws_connect_cb, pws);
     evhttp_request_set_error_cb(req, libws_error_cb);
@@ -401,24 +460,3 @@ struct libws_t *libws_connect(struct event_base *base,
     return pws;
 }
 
-// 超时检测
-// void libws_poll()
-// {
-//     struct libws_t *p, *q;
-//     uint64_t ms;
-//     ms = get_fms();
-//     for(p=gws;p;)
-//     {
-//         if(ms<p->ms)
-//             continue;
-//         if(ms-p->ms > 30*1000)
-//         {
-//             LOG(LL_NONE, ("time-out close"));
-//             q = p;
-//             p = p->next;
-//             libws_close_cb( nullptr, q);
-//             continue;
-//         }
-//         p = p->next;
-//     }
-// }

@@ -851,9 +851,9 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 			// 		uint8_t* msg = new uint8_t[]("hello libevent");
 			// 		int len = strlen(msg);
 
-			const int len = 1024 * 10;
+			const int len = 1024;
 			uint8_t* msg = new uint8_t[len]{ 0 };
-			memset(msg, 'T', len);
+			memset(msg, 'T', len - 1);
 
 			if (_isWebsocket)
 			{
@@ -1313,7 +1313,7 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 static void libws_rdcb(struct bufferevent* bev, void* ctx)
 {
 	struct libws_t* pws = (struct libws_t*)ctx;
-	if (pws->is_active == 0)
+	if (pws->is_active == false)
 		return;
 	
 	struct ws_msg msg;
@@ -1365,7 +1365,7 @@ static void libws_rdcb(struct bufferevent* bev, void* ctx)
 static void libws_wrcb(struct bufferevent* bev, void* ctx)
 {
 	struct libws_t* p = (struct libws_t*)ctx;
-	if (p->is_active == 0)
+	if (p->is_active == false)
 		return;
 	if (p->wr_cb)
 		p->wr_cb(p);
@@ -1431,7 +1431,7 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 	pws->dlg = dlg;
 	pws->conn = req->evcon;
 	pws->ms = dlg->GetRunningTime();
-	pws->is_active = 1;
+	pws->is_active = true;
 	pws->conn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1);
 	pws->disconn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1);
 	pws->rd_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3);
@@ -1446,7 +1446,7 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 		"Sec-WebSocket-Accept: %s\r\n"
 		"\r\n", pbase64);
 	struct bufferevent* bev = evhttp_connection_get_bufferevent(req->evcon);
-	bufferevent_enable(bev, EV_READ | EV_WRITE | EV_PERSIST);
+	bufferevent_enable(bev, EV_PERSIST | EV_READ | EV_WRITE);
 
 	// 修改读写上限
 	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
@@ -2216,7 +2216,7 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 	const int remotePort = _wtoi(tmpStr);
 
 	CString strURI;
-	strURI.Format(L"http://127.0.0.1:%d/websocket?q=test&s=some+thing", remotePort);
+	strURI.Format(L"ws://127.0.0.1:%d/websocket?q=test&s=some+thing", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
