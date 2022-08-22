@@ -722,11 +722,11 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	// 使用随机的本地端口
 	if (IsUseSSL())
 	{
-		bev = bufferevent_openssl_socket_new(eventBase, -1, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+		bev = bufferevent_openssl_socket_new(eventBase, -1, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 	else
 	{
-		bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+		bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 #else
 	// 使用指定的本地IP、端口
@@ -770,11 +770,11 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 
 	if (IsUseSSL())
 	{
-		bev = bufferevent_openssl_socket_new(eventBase, sockfd, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+		bev = bufferevent_openssl_socket_new(eventBase, sockfd, eventData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 	else
 	{
-		bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_CLOSE_ON_FREE);
+		bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 #endif
 
@@ -848,38 +848,34 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
 	thread([&] 
 	{
-			// 		uint8_t* msg = new uint8_t[]("hello libevent");
-			// 		int len = strlen(msg);
+		const int len = 1024 * 10;
+		uint8_t* msg = new uint8_t[len]{ 0 };
+		memset(msg, 'T', len - 1);
 
-			const int len = 1024;
-			uint8_t* msg = new uint8_t[len]{ 0 };
-			memset(msg, 'T', len - 1);
-
-			if (_isWebsocket)
+		if (_isWebsocket)
+		{
+			if (_currentWS)
 			{
-				if (_currentWS)
+				int ret = libws_send(_currentWS, msg, len, LIBWS_OP_BINARY);
+				if (ret <= 0)
 				{
-					int ret = libws_send(_currentWS, msg, len, LIBWS_OP_BINARY);
-					if (ret <= 0)
-					{
-						AppendMsg(L"发送数据失败");
-					}
+					AppendMsg(L"发送数据失败");
 				}
 			}
-			else
+		}
+		else
+		{
+			if (_currentEventData)
 			{
-				if (_currentEventData)
+				int ret = bufferevent_write(_currentEventData->bev, msg, len);
+				if (ret != 0)
 				{
-					int ret = bufferevent_write(_currentEventData->bev, msg, len);
-					if (ret != 0)
-					{
-						AppendMsg(L"发送数据失败");
-					}
+					AppendMsg(L"发送数据失败");
 				}
 			}
+		}
 
-
-			delete[] msg;
+		delete[] msg;
 	}).detach();
 }
 
@@ -2220,12 +2216,27 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
-	libws_t* pws = libws_connect(eventBase, uri,
+	libws_t* pws = nullptr;
+#ifdef _USE_RANDOM_LOCALPORT
+	// 使用随机的本地端口
+	pws = libws_connect(eventBase, uri,
 		bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, this, placeholders::_1),
 		this);
+#else
+	// 使用指定的本地IP、端口
+	_editPort.GetWindowText(tmpStr);
+	const int localPort = _wtoi(tmpStr);
+
+	pws = libws_connect(eventBase, uri, "0.0.0.0", localPort, IsUseSSL(),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, this, placeholders::_1),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, this, placeholders::_1),
+		this);
+#endif
 	if (!pws)
 	{
 		AppendMsg(L"WebSocket客户端连接失败");
@@ -2242,10 +2253,18 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 
 void CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer()
 {
-	// TODO: 在此添加控件通知处理程序代码
+	if (_currentWS)
+	{
+		evhttp_connection_free(_currentWS->conn);
+		_currentWS = nullptr;
+	}
 }
 
 void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 {
-	// TODO: 在此添加控件通知处理程序代码
+	if (_currentWS)
+	{
+		evhttp_connection_free(_currentWS->conn);
+		_currentWS = nullptr;
+	}
 }

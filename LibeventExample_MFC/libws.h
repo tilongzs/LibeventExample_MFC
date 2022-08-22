@@ -30,11 +30,6 @@ struct ws_msg {
 #define libws_strcasecmp strcasecmp
 #endif
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #define LIBWS_OP_CONTINUE 0
 #define LIBWS_OP_TEXT 1
 #define LIBWS_OP_BINARY 2
@@ -45,6 +40,9 @@ extern "C"
 #define LIBWS_FLAGS_MASK_FIN 128
 #define LIBWS_FLAGS_MASK_OP 15
 
+struct ssl_ctx_st;
+struct ssl_st;
+
 struct libws_t
 {
     CLibeventExample_MFCDlg* dlg = nullptr;
@@ -52,23 +50,32 @@ struct libws_t
     uint64_t ms = 0;
     bool is_active = false;     // 是否可用
     bool is_client = false;     // 是不是客户端，用来发送MASK位
+	ssl_ctx_st* ssl_ctx = nullptr;
+	ssl_st* ssl = nullptr;
 
-	function<int(struct libws_t*)> conn_cb = nullptr;
-	function<int(struct libws_t*)> disconn_cb = nullptr;
-	function<int(struct libws_t*, uint8_t*, size_t)> rd_cb = nullptr;
-	function<int(struct libws_t*)> wr_cb = nullptr;
+	function<int(libws_t*)> conn_cb = nullptr;
+	function<int(libws_t*)> disconn_cb = nullptr;
+	function<int(libws_t*, uint8_t*, size_t)> rd_cb = nullptr;
+	function<int(libws_t*)> wr_cb = nullptr;
 };
 
-int libws_send(struct libws_t* pws, uint8_t* pdata, size_t size, uint8_t op);
-struct libws_t *libws_connect(struct event_base *base,
+int libws_send(libws_t* pws, uint8_t* pdata, size_t size, uint8_t op);
+struct libws_t *libws_connect(struct event_base *eventBase,
                             const char *url,
-                            function<int(struct libws_t*)> conn_cb,
-                            function<int(struct libws_t*)> disconn_cb,
-	                        function<int(struct libws_t*, uint8_t*, size_t)> rd_cb,
-	                        function<int(struct libws_t*)> wr_cb,
+                            function<int(libws_t*)> conn_cb,
+                            function<int(libws_t*)> disconn_cb,
+	                        function<int(libws_t*, uint8_t*, size_t)> rd_cb,
+	                        function<int(libws_t*)> wr_cb,
                             CLibeventExample_MFCDlg* dlg);
 
+struct libws_t* libws_connect(struct event_base* eventBase,
+	const char* url,
+	const char* localIP,
+	int localPort,
+	bool useSSL,
+	function<int(libws_t*)> conn_cb,
+	function<int(libws_t*)> disconn_cb,
+	function<int(libws_t*, uint8_t*, size_t)> rd_cb,
+	function<int(libws_t*)> wr_cb,
+	CLibeventExample_MFCDlg* dlg);
 
-#ifdef __cplusplus
-}
-#endif

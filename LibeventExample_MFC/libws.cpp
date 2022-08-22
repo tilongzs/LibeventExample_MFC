@@ -29,8 +29,14 @@
 #include "libws.h"
 #include "Common/sha1.h"
 #include "Common/base64.h"
+#include "Common/Common.h"
 #include <queue>
 #include "LibeventExample_MFCDlg.h"
+
+// OpenSSL
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/sha.h>
 
 #define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
 
@@ -38,7 +44,7 @@ static void libws_proc(struct libws_t *);
 
 static void libws_close_cb(struct evhttp_connection *conn, void *arg)
 {
-    struct libws_t* pws = (struct libws_t*)arg;
+    libws_t* pws = (libws_t*)arg;
 
     if (pws->disconn_cb)
     {
@@ -50,7 +56,7 @@ static void libws_close_cb(struct evhttp_connection *conn, void *arg)
 
 static void libws_rdcb(struct bufferevent *bev, void *ctx)
 {
-    struct libws_t* p = (struct libws_t*)ctx;
+    libws_t* p = (libws_t*)ctx;
 
     if(p->is_active == false)
         return;
@@ -59,7 +65,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 
 static void libws_wrcb(struct bufferevent *bev, void *ctx)
 {
-    struct libws_t* p = (struct libws_t*)ctx;
+    libws_t* p = (libws_t*)ctx;
     if(p->is_active == false)
         return;
     if(p->wr_cb)
@@ -70,7 +76,7 @@ static void libws_evcb(struct bufferevent *bev, short what, void *ctx)
 {
     if(what & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
     {
-		struct libws_t* pws = (struct libws_t*)ctx;
+		libws_t* pws = (libws_t*)ctx;
         evhttp_connection_free(pws->conn);
     }
     return;
@@ -80,7 +86,7 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
 {
     if(NULL == req || NULL == arg)
         return;
-	struct libws_t* pws = (struct libws_t*)arg;
+	libws_t* pws = (libws_t*)arg;
 
     if(evbuffer_get_length(req->input_buffer))
         evbuffer_drain(req->input_buffer, evbuffer_get_length(req->input_buffer));
@@ -134,7 +140,7 @@ static void libws_error_cb(enum evhttp_request_error error, void* arg)
 {
     if(NULL == arg)
         return;
-    libws_close_cb(NULL, arg); //  (struct libws_t*)arg
+    libws_close_cb(NULL, arg); //  (libws_t*)arg
 }
 
 static size_t libws_process(uint8_t *buf, size_t len, struct ws_msg *msg)
@@ -282,7 +288,7 @@ static size_t makeHeader(size_t len, int op, bool is_client, uint8_t* buf)
 	return n;
 }
 
-int libws_send(struct libws_t* pws, uint8_t* pdata, size_t dataSize, uint8_t op)
+int libws_send(libws_t* pws, uint8_t* pdata, size_t dataSize, uint8_t op)
 {
     if(NULL == pws)
         return -1;
@@ -307,14 +313,13 @@ int libws_send(struct libws_t* pws, uint8_t* pdata, size_t dataSize, uint8_t op)
         return -6;
     }
 
-   // uint8_t* buf = (uint8_t*)malloc(dataSize);
-   // memcpy(buf, pdata, dataSize);
 	if (0 != evbuffer_add(evBuf, pdata, dataSize))
 	{
 		evbuffer_free(evBuf);
 		return -6;
 	}
 
+    // 客户端采用掩码发送
     if (pws->is_client)
     {
 		size_t evBufSize = evbuffer_get_length(evBuf);
@@ -367,22 +372,25 @@ int libws_send(struct libws_t* pws, uint8_t* pdata, size_t dataSize, uint8_t op)
 	}
 }
 
-struct libws_t *libws_connect(struct event_base *base,
+struct libws_t *libws_connect(struct event_base *eventBase,
     const char *url,
-	function<int(struct libws_t*)> conn_cb,
-	function<int(struct libws_t*)> disconn_cb,
-	function<int(struct libws_t*, uint8_t*, size_t)> rd_cb,
-	function<int(struct libws_t*)> wr_cb,
+	const char* localIP,
+	int localPort,
+    bool useSSL,
+	function<int(libws_t*)> conn_cb,
+	function<int(libws_t*)> disconn_cb,
+	function<int(libws_t*, uint8_t*, size_t)> rd_cb,
+	function<int(libws_t*)> wr_cb,
     CLibeventExample_MFCDlg* dlg)
 {
-    if(url==NULL)
-        return NULL;
-    if(base==NULL)
-        return NULL;
+    if(nullptr == url)
+        return nullptr;
+    if(nullptr == eventBase)
+        return nullptr;
     struct evhttp_uri* uri = evhttp_uri_parse(url);
     if(!uri)
     {
-        return NULL;
+        return nullptr;
     }
     const char* host = evhttp_uri_get_host(uri);
     int port = evhttp_uri_get_port(uri);
@@ -390,8 +398,7 @@ struct libws_t *libws_connect(struct event_base *base,
     const char* query = evhttp_uri_get_query(uri);
     const char* path = evhttp_uri_get_path(uri);
     size_t nlen = (query ? strlen(query) : 0) + (path ? strlen(path) : 0) + 8;
-
-    char* request_url = (char*)calloc(nlen, 1);
+    char* request_url = new char[nlen];
     if(!path)
         sprintf(request_url, "/");
     else if(strlen(path)==0)
@@ -401,30 +408,81 @@ struct libws_t *libws_connect(struct event_base *base,
     else
         sprintf(request_url, "%s", path);
 
-    struct bufferevent* bev = bufferevent_socket_new(base, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
-    if(NULL == bev)
-    {
-        free(request_url);
-        return NULL;
-    }
+	sockaddr_in localAddr = { 0 };
+	if (!ConvertIPPort(localIP, localPort, localAddr))
+	{
+        return nullptr;
+	}
 
-    struct evhttp_connection* evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev, host, (uint16_t)(port));
-    if(NULL == evcon)
-    {
-        free(request_url);
-        return NULL;
-    }
+	evutil_socket_t sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	// 修改socket属性
+	int bufLen = SINGLE_PACKAGE_SIZE;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	{
+		return nullptr;
+	}
+	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	{
+		return nullptr;
+	}
+	linger l;
+	l.l_onoff = 1;
+	l.l_linger = 0;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l)) < 0)
+	{
+		return nullptr;
+	}
+	if (evutil_make_socket_nonblocking(sockfd) < 0)
+	{
+		return nullptr;
+	}
 
-    struct libws_t* pws = new struct libws_t;
-    memset(pws, 0, sizeof(libws_t));
-    pws->dlg = dlg;
-	pws->conn = evcon;
+	if (::bind(sockfd, (sockaddr*)&localAddr, sizeof(localAddr)) != 0)
+	{
+		return nullptr;
+	}
+
+	libws_t* pws = new struct libws_t;
+	memset(pws, 0, sizeof(libws_t));
+	pws->dlg = dlg;
 	pws->conn_cb = conn_cb;
 	pws->disconn_cb = disconn_cb;
-    pws->rd_cb = rd_cb;
-    pws->wr_cb = wr_cb;
-    pws->ms = dlg->GetRunningTime();
-    pws->is_client = true;
+	pws->rd_cb = rd_cb;
+	pws->wr_cb = wr_cb;
+	pws->ms = dlg->GetRunningTime();
+	pws->is_client = true;
+	if (useSSL)
+	{
+		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+        pws->ssl_ctx = SSL_CTX_new(TLS_client_method());
+        pws->ssl = SSL_new(pws->ssl_ctx);
+	}
+
+    bufferevent* bev = nullptr;
+	if (useSSL)
+	{
+		bev = bufferevent_openssl_socket_new(eventBase, sockfd, pws->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
+	}
+	else
+	{
+		bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
+	}
+
+    if(NULL == bev)
+    {
+        delete[] request_url;
+        delete pws;
+        return nullptr;
+    }
+
+    struct evhttp_connection* evcon = evhttp_connection_base_bufferevent_new(eventBase, NULL, bev, host, (uint16_t)(port));
+    if(NULL == evcon)
+    {
+		delete[] request_url;
+		delete pws;
+        return nullptr;
+    }
+    pws->conn = evcon;
 
     struct evhttp_request* req = evhttp_request_new(libws_connect_cb, pws);
     evhttp_request_set_error_cb(req, libws_error_cb);
@@ -454,9 +512,101 @@ struct libws_t *libws_connect(struct event_base *base,
 
     evhttp_make_request(evcon, req, EVHTTP_REQ_GET, request_url);
     evhttp_connection_set_closecb(evcon, libws_close_cb, pws);
-    if(request_url)
-        free(request_url);
+
+    delete request_url;
     evhttp_uri_free(uri);
     return pws;
 }
 
+struct libws_t* libws_connect(struct event_base* base,
+	const char* url,
+	function<int(libws_t*)> conn_cb,
+	function<int(libws_t*)> disconn_cb,
+	function<int(libws_t*, uint8_t*, size_t)> rd_cb,
+	function<int(libws_t*)> wr_cb,
+	CLibeventExample_MFCDlg* dlg)
+{
+	if (url == NULL)
+		return nullptr;
+	if (base == NULL)
+		return nullptr;
+	struct evhttp_uri* uri = evhttp_uri_parse(url);
+	if (!uri)
+	{
+		return nullptr;
+	}
+	const char* host = evhttp_uri_get_host(uri);
+	int port = evhttp_uri_get_port(uri);
+	if (port < 0) port = 80;
+	const char* query = evhttp_uri_get_query(uri);
+	const char* path = evhttp_uri_get_path(uri);
+	size_t nlen = (query ? strlen(query) : 0) + (path ? strlen(path) : 0) + 8;
+
+	char* request_url = (char*)calloc(nlen, 1);
+	if (!path)
+		sprintf(request_url, "/");
+	else if (strlen(path) == 0)
+		sprintf(request_url, "/");
+	else if (query)
+		sprintf(request_url, "%s?%s", path, query);
+	else
+		sprintf(request_url, "%s", path);
+
+	struct bufferevent* bev = bufferevent_socket_new(base, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
+	if (NULL == bev)
+	{
+		free(request_url);
+		return nullptr;
+	}
+
+	struct evhttp_connection* evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev, host, (uint16_t)(port));
+	if (NULL == evcon)
+	{
+		free(request_url);
+		return nullptr;
+	}
+
+	libws_t* pws = new struct libws_t;
+	memset(pws, 0, sizeof(libws_t));
+	pws->dlg = dlg;
+	pws->conn = evcon;
+	pws->conn_cb = conn_cb;
+	pws->disconn_cb = disconn_cb;
+	pws->rd_cb = rd_cb;
+	pws->wr_cb = wr_cb;
+	pws->ms = dlg->GetRunningTime();
+	pws->is_client = true;
+
+	struct evhttp_request* req = evhttp_request_new(libws_connect_cb, pws);
+	evhttp_request_set_error_cb(req, libws_error_cb);
+	evhttp_add_header(req->output_headers, "Host", host);
+	evhttp_add_header(req->output_headers, "Upgrade", "websocket");
+	evhttp_add_header(req->output_headers, "Connection", "Upgrade");
+	evhttp_remove_header(req->output_headers, "Proxy-Connection");
+	evhttp_add_header(req->output_headers, "Proxy-Connection", "keep-alive");
+	evhttp_add_header(req->output_headers, "Sec-WebSocket-Version", "13");
+
+	char nonce[16];
+	char key[256];
+	for (size_t i = 0; i < sizeof(nonce) / sizeof(nonce[0]); i++)
+		nonce[i] = (char)(rand() & 0xff);
+	memset(key, 0, sizeof(key));
+	base64_encode((const uint8_t*)nonce, sizeof(nonce), key);
+	evhttp_add_header(req->output_headers, "Sec-WebSocket-Key", key);
+
+	struct evkeyvalq headers;
+	evhttp_parse_query(url, &headers);
+	struct evkeyval* kv = headers.tqh_first;
+	while (kv)
+	{
+		evhttp_add_header(req->output_headers, kv->key, kv->value);
+		kv = kv->next.tqe_next;
+	}
+
+	evhttp_make_request(evcon, req, EVHTTP_REQ_GET, request_url);
+	evhttp_connection_set_closecb(evcon, libws_close_cb, pws);
+	if (request_url)
+		free(request_url);
+	evhttp_uri_free(uri);
+	return pws;
+}
