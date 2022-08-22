@@ -60,8 +60,6 @@ private:
 	CButton _btnStopHttpServer;
 	CIPAddressCtrl _ipRemote;
 
-	steady_clock::time_point	_beginTime;
-
 	// TCP
 	evconnlistener* _listener = nullptr;
 	EventData* _listenEventData = nullptr;

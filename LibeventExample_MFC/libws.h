@@ -47,7 +47,6 @@ struct libws_t
 {
     CLibeventExample_MFCDlg* dlg = nullptr;
     struct evhttp_connection *conn = nullptr;
-    uint64_t ms = 0;
     bool is_active = false;     // 是否可用
     bool is_client = false;     // 是不是客户端，用来发送MASK位
 	ssl_ctx_st* ssl_ctx = nullptr;

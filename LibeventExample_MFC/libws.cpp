@@ -32,6 +32,9 @@
 #include "Common/Common.h"
 #include <queue>
 #include "LibeventExample_MFCDlg.h"
+#include <functional>
+
+using namespace std;
 
 // OpenSSL
 #include <openssl/ssl.h>
@@ -136,13 +139,6 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
     }
 }
 
-static void libws_error_cb(enum evhttp_request_error error, void* arg)
-{
-    if(NULL == arg)
-        return;
-    libws_close_cb(NULL, arg); //  (libws_t*)arg
-}
-
 static size_t libws_process(uint8_t *buf, size_t len, struct ws_msg *msg)
 {
     if(NULL == msg)
@@ -219,7 +215,6 @@ void libws_proc(struct libws_t *pws)
         res = libws_process(p, (size_t)size, &msg);
         if(res)
         {
-            pws->ms = pws->dlg->GetRunningTime();
             switch (msg.flags & LIBWS_FLAGS_MASK_OP) {
               case LIBWS_OP_CONTINUE:
                 break;
@@ -300,7 +295,6 @@ int libws_send(libws_t* pws, uint8_t* pdata, size_t dataSize, uint8_t op)
         return -4;
     if(pws->is_active==0) // 连接无效
         return -5;
-    pws->ms = pws->dlg->GetRunningTime();
     struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
 
     struct evbuffer* evBuf = evbuffer_new();
@@ -449,7 +443,6 @@ struct libws_t *libws_connect(struct event_base *eventBase,
 	pws->disconn_cb = disconn_cb;
 	pws->rd_cb = rd_cb;
 	pws->wr_cb = wr_cb;
-	pws->ms = dlg->GetRunningTime();
 	pws->is_client = true;
 	if (useSSL)
 	{
@@ -485,7 +478,6 @@ struct libws_t *libws_connect(struct event_base *eventBase,
     pws->conn = evcon;
 
     struct evhttp_request* req = evhttp_request_new(libws_connect_cb, pws);
-    evhttp_request_set_error_cb(req, libws_error_cb);
     evhttp_add_header(req->output_headers, "Host", host);
     evhttp_add_header(req->output_headers, "Upgrade", "websocket");
     evhttp_add_header(req->output_headers, "Connection", "Upgrade");
@@ -574,11 +566,9 @@ struct libws_t* libws_connect(struct event_base* base,
 	pws->disconn_cb = disconn_cb;
 	pws->rd_cb = rd_cb;
 	pws->wr_cb = wr_cb;
-	pws->ms = dlg->GetRunningTime();
 	pws->is_client = true;
 
 	struct evhttp_request* req = evhttp_request_new(libws_connect_cb, pws);
-	evhttp_request_set_error_cb(req, libws_error_cb);
 	evhttp_add_header(req->output_headers, "Host", host);
 	evhttp_add_header(req->output_headers, "Upgrade", "websocket");
 	evhttp_add_header(req->output_headers, "Connection", "Upgrade");

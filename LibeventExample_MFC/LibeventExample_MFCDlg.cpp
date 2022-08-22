@@ -189,12 +189,9 @@ BOOL CLibeventExample_MFCDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);
 	SetIcon(m_hIcon, FALSE);
 
-	_beginTime = steady_clock::now();
-
 	_editPort.SetWindowText(L"23300");
 	_ipRemote.SetAddress(127, 0, 0, 1);
 	_editRemotePort.SetWindowText(L"23300");
-
 	_btnStopHttpServer.EnableWindow(FALSE);
 
 	AppendMsg(L"启动");
@@ -289,7 +286,7 @@ void CLibeventExample_MFCDlg::SetCurrentEventData(EventData* eventData)
 	_currentEventData = eventData;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketConnect(struct libws_t* pws)
+int CLibeventExample_MFCDlg::OnWebsocketConnect(libws_t* pws)
 {
 	if (_httpServer)
 	{
@@ -305,7 +302,7 @@ int CLibeventExample_MFCDlg::OnWebsocketConnect(struct libws_t* pws)
 	return true;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketDisconnect(struct libws_t* pws)
+int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libws_t* pws)
 {
 	if (_httpServer)
 	{
@@ -325,7 +322,7 @@ int CLibeventExample_MFCDlg::OnWebsocketDisconnect(struct libws_t* pws)
 	return true;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketRead(struct libws_t* pws, uint8_t* buf, size_t size)
+int CLibeventExample_MFCDlg::OnWebsocketRead(libws_t* pws, uint8_t* buf, size_t size)
 {
 	CString strMsg;
 	strMsg.Format(L"WebSocket收到数据 %u字节", size);
@@ -334,15 +331,10 @@ int CLibeventExample_MFCDlg::OnWebsocketRead(struct libws_t* pws, uint8_t* buf, 
 	return 0;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketWrite(struct libws_t* pws)
+int CLibeventExample_MFCDlg::OnWebsocketWrite(libws_t* pws)
 {
 	AppendMsg(L"WebSocket写入数据完成");
 	return 0;
-}
-
-uint64_t CLibeventExample_MFCDlg::GetRunningTime()
-{
-	return duration<double, std::milli>(_beginTime - steady_clock::now()).count();
 }
 
 LRESULT CLibeventExample_MFCDlg::OnFunction(WPARAM wParam, LPARAM lParam)
@@ -1308,7 +1300,7 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 
 static void libws_rdcb(struct bufferevent* bev, void* ctx)
 {
-	struct libws_t* pws = (struct libws_t*)ctx;
+	libws_t* pws = (libws_t*)ctx;
 	if (pws->is_active == false)
 		return;
 	
@@ -1323,7 +1315,6 @@ static void libws_rdcb(struct bufferevent* bev, void* ctx)
 		size_t res = libws_process(buf, (size_t)bufSize, &msg);
 		if (res)
 		{
-			pws->ms = pws->dlg->GetRunningTime();
 			switch (msg.flags & LIBWS_FLAGS_MASK_OP)
 			{
 				case LIBWS_OP_CONTINUE:
@@ -1360,7 +1351,7 @@ static void libws_rdcb(struct bufferevent* bev, void* ctx)
 
 static void libws_wrcb(struct bufferevent* bev, void* ctx)
 {
-	struct libws_t* p = (struct libws_t*)ctx;
+	libws_t* p = (libws_t*)ctx;
 	if (p->is_active == false)
 		return;
 	if (p->wr_cb)
@@ -1369,7 +1360,7 @@ static void libws_wrcb(struct bufferevent* bev, void* ctx)
 
 static void libws_evcb(struct bufferevent* bev, short what, void* ctx)
 {
-	struct libws_t* pws = (struct libws_t*)ctx;
+	libws_t* pws = (libws_t*)ctx;
 	if (what & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
 	{
 		if (pws->disconn_cb)
@@ -1390,7 +1381,6 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 	const char* p;
 	int ret;
-	char buf[256], sha1_str[20], pbase64[256];
 	const char* _magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	
 	(void)arg;
@@ -1413,34 +1403,37 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 		return;
 	}
 
+	char buf[256];
 	memset(buf, 0, sizeof(buf));
 	strcpy(buf, p);
 	memcpy(&buf[strlen(buf)], _magic, strlen(_magic));
-	ret = mbedtls_sha1_ret((const uint8_t*)buf, (int)strlen(buf), (uint8_t*)sha1_str);
+
+	char strSHA1[20];
+	ret = mbedtls_sha1_ret((const uint8_t*)buf, (int)strlen(buf), (uint8_t*)strSHA1);
 	if (ret != 0)
 	{
-		evhttp_send_reply(req, HTTP_INTERNAL, "", NULL);     // SHA1错误
+		evhttp_send_reply(req, HTTP_INTERNAL, "", NULL);
 		return;
 	}
 
-	struct libws_t* pws = new struct libws_t;
+	libws_t* pws = new libws_t;
 	pws->dlg = dlg;
 	pws->conn = req->evcon;
-	pws->ms = dlg->GetRunningTime();
 	pws->is_active = true;
 	pws->conn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1);
 	pws->disconn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1);
 	pws->rd_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3);
 	pws->wr_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1);
 
-	memset(pbase64, 0, sizeof(pbase64));
-	base64_encode((const uint8_t*)sha1_str, 20, pbase64);
+	char strBase64[256];
+	memset(strBase64, 0, sizeof(strBase64));
+	base64_encode((const uint8_t*)strSHA1, 20, strBase64);
 	sprintf(buf, "HTTP/1.1 101 Switching Protocols\r\n"
 		"Upgrade: websocket\r\n"
 		"Connection: Upgrade\r\n"
 		"Sec-WebSocket-Version: 13\r\n"
 		"Sec-WebSocket-Accept: %s\r\n"
-		"\r\n", pbase64);
+		"\r\n", strBase64);
 	struct bufferevent* bev = evhttp_connection_get_bufferevent(req->evcon);
 	bufferevent_enable(bev, EV_PERSIST | EV_READ | EV_WRITE);
 
