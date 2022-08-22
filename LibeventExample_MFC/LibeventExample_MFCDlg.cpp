@@ -1229,150 +1229,6 @@ static void OnHTTP_API_delA(evhttp_request* req, void* arg)
 	dlg->AppendMsg(strMsg);
 }
 
-static void libws_close_cb(struct evhttp_connection* conn, void* arg)
-{
-	libws_t* pws = (libws_t*)arg;
-	if (pws->disconn_cb)
-	{
-		pws->disconn_cb(pws);
-	}
-
-	delete pws;
-}
-
-static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
-{
-	uint64_t tmp;
-	size_t i, n = 0, mask_len = 0;
-	if (msg == NULL)
-		return 0;
-	if (buf == NULL)
-		return 0;
-	memset(msg, 0, sizeof(ws_msg));
-	if (len >= 2)
-	{
-		msg->flags = buf[0];
-		n = buf[1] & 0x7f;
-		mask_len = buf[1] & 0x80 ? 4 : 0;
-		if (n < 126 && len >= mask_len)
-		{
-			msg->headerSize = 2 + mask_len;
-			msg->dataSize = n;
-		}
-		else if (n == 126 && len >= 4 + mask_len)
-		{
-			msg->headerSize = 4 + mask_len;
-			msg->dataSize = buf[2];
-			msg->dataSize <<= 8;
-			msg->dataSize |= buf[3];
-		}
-		else if (len >= 10 + mask_len)
-		{
-			msg->headerSize = 10 + mask_len;
-			tmp = buf[2];
-			tmp <<= 8;
-			tmp |= buf[3];
-			tmp <<= 8;
-			tmp |= buf[4];
-			tmp <<= 8;
-			tmp |= buf[5];
-			tmp <<= 8;
-			tmp |= buf[6];
-			tmp <<= 8;
-			tmp |= buf[7];
-			tmp <<= 8;
-			tmp |= buf[8];
-			tmp <<= 8;
-			tmp |= buf[9];
-			msg->dataSize = (size_t)tmp;
-		}
-	}
-	if (msg->headerSize + msg->dataSize > len)
-		return 0;
-	if (mask_len > 0)
-	{
-		uint8_t* p = buf + msg->headerSize, * m = p - mask_len;
-		for (i = 0; i < msg->dataSize; i++)
-			p[i] ^= m[i & 3];
-	}
-	return msg->headerSize + msg->dataSize;
-}
-
-static void libws_rdcb(struct bufferevent* bev, void* ctx)
-{
-	libws_t* pws = (libws_t*)ctx;
-	if (pws->is_active == false)
-		return;
-	
-	struct ws_msg msg;
-	struct evbuffer* input = bufferevent_get_input(bev);
-	size_t bufSize = evbuffer_get_length(input);
-
-	uint8_t* buf = new uint8_t[bufSize];
-	size_t readSize = evbuffer_remove(input, buf, bufSize);
-	if (readSize > 0)
-	{
-		size_t res = libws_process(buf, (size_t)bufSize, &msg);
-		if (res)
-		{
-			switch (msg.flags & LIBWS_FLAGS_MASK_OP)
-			{
-				case LIBWS_OP_CONTINUE:
-					//                call(c, LIBWS_EV_WS_CTL, &m);
-					break;
-				case LIBWS_OP_PING:
-					libws_send(pws, &buf[msg.headerSize], msg.dataSize, LIBWS_OP_PONG);
-					//                call(c, LIBWS_EV_WS_CTL, &m);
-					break;
-				case LIBWS_OP_PONG:
-					//                call(c, LIBWS_EV_WS_CTL, &m);
-					break;
-				case LIBWS_OP_TEXT:
-				case LIBWS_OP_BINARY:
-					if (pws->rd_cb)
-						pws->rd_cb(pws, &buf[msg.headerSize], msg.dataSize);
-					break;
-				case LIBWS_OP_CLOSE:
-				{
-					evhttp_connection_free(pws->conn);
-				}
-				return;
-				default:
-				{
-					// Per RFC6455, close conn when an unknown op is recvd
-					evhttp_connection_free(pws->conn);
-				}
-			}
-		}
-
-		delete[] buf;
-	}
-}
-
-static void libws_wrcb(struct bufferevent* bev, void* ctx)
-{
-	libws_t* p = (libws_t*)ctx;
-	if (!p->is_active)
-		return;
-	if (p->wr_cb)
-		p->wr_cb(p);
-}
-
-static void libws_evcb(struct bufferevent* bev, short what, void* ctx)
-{
-	libws_t* pws = (libws_t*)ctx;
-	if (what & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
-	{
-		if (pws->disconn_cb)
-		{
-			pws->disconn_cb(pws);
-		}
-
-		delete pws;
-	}
-	return;
-}
-
 static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
@@ -1498,6 +1354,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	{
 		AppendMsg(L"创建evhttp_bind_socket失败");
 		delete eventData;
+		evhttp_free(_httpServer);
 		return;
 	}
 
@@ -1518,9 +1375,10 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	thread([&, eventData, eventBase]
 		{
 			event_base_dispatch(eventBase); // 阻塞
+			AppendMsg(L"HTTP服务端 event_base_dispatch线程 结束");
 
 			delete eventData;
-			evhttp_free(_httpServer);
+			event_base_free(eventBase);
 		}).detach();
 }
 
@@ -1529,6 +1387,7 @@ void CLibeventExample_MFCDlg::OnBtnStopHttpServer()
 	if (_httpServer && _httpSocket)
 	{
 		evhttp_del_accept_socket(_httpServer, _httpSocket);
+		evhttp_free(_httpServer);
 
 		AppendMsg(L"HTTP 服务端停止");
 		_btnHTTPServer.EnableWindow(TRUE);

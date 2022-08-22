@@ -51,7 +51,7 @@ libws_t* libws_upgrade(
 	function<int(libws_t*)> disconn_cb,
 	function<int(libws_t*, uint8_t*, size_t)> rd_cb,
 	function<int(libws_t*)> wr_cb
-);
+	);
 
 libws_t* libws_connect(struct event_base* eventBase,
 	const char* url,

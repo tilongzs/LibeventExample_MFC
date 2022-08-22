@@ -106,40 +106,40 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 		return;
 
 	struct ws_msg msg;
-	uint8_t* buf;
-	size_t res;
-	ev_ssize_t size;
-	for (size = 1, res = 1; res && size;)
+	struct evbuffer* input = bufferevent_get_input(bev);
+	size_t bufSize = evbuffer_get_length(input);
+
+	uint8_t* buf = new uint8_t[bufSize];
+	size_t readSize = evbuffer_remove(input, buf, bufSize);
+	if (readSize > 0)
 	{
-		size = (ev_ssize_t)evbuffer_get_length(bev->input);
-		buf = evbuffer_pullup(bev->input, size);
-		res = libws_process(buf, (size_t)size, &msg);
+		size_t res = libws_process(buf, (size_t)bufSize, &msg);
 		if (res)
 		{
 			switch (msg.flags & LIBWS_FLAGS_MASK_OP)
-            {
-			    case LIBWS_OP_CONTINUE:
-			    	break;
-			    case LIBWS_OP_PING:
-			    	libws_send(pws, (uint8_t*)&buf[msg.headerSize], msg.dataSize, LIBWS_OP_PONG);
-			    	break;
-			    case LIBWS_OP_PONG:
-			    	break;
-			    case LIBWS_OP_TEXT:
-			    case LIBWS_OP_BINARY:
-			    	if (pws->rd_cb)
-			    		pws->rd_cb(pws, &buf[msg.headerSize], msg.dataSize);
-			    	break;
-			    case LIBWS_OP_CLOSE:
-			    	evhttp_connection_free(pws->conn);
-			    	return;
-			    default:
-			    	evhttp_connection_free(pws->conn); // 收到未知数据时关闭连接
-					return;
+			{
+				case LIBWS_OP_CONTINUE:
+					break;
+				case LIBWS_OP_PING:
+					libws_send(pws, &buf[msg.headerSize], msg.dataSize, LIBWS_OP_PONG);
+					break;
+				case LIBWS_OP_PONG:
+					break;
+				case LIBWS_OP_TEXT:
+				case LIBWS_OP_BINARY:
+					if (pws->rd_cb)
+						pws->rd_cb(pws, &buf[msg.headerSize], msg.dataSize);
+					break;
+				case LIBWS_OP_CLOSE:
+					evhttp_connection_free(pws->conn);
+					break;
+				default:
+					evhttp_connection_free(pws->conn);  // 收到未知数据时关闭连接
+					break;
 			}
-			evbuffer_drain(bev->input, msg.headerSize + msg.dataSize);
 		}
 	}
+	delete[] buf;
 }
 
 static void libws_wrcb(struct bufferevent *bev, void *ctx)
