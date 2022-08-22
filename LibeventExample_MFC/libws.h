@@ -28,10 +28,11 @@ struct ws_msg
 struct ssl_ctx_st;
 struct ssl_st;
 struct evhttp_connection;
+struct evhttp_request;
 
 struct libws_t
 {
-    struct evhttp_connection *conn = nullptr;
+    evhttp_connection *conn = nullptr;
     bool is_active = false;
     bool is_client = false;
 	ssl_ctx_st* ssl_ctx = nullptr;
@@ -42,6 +43,15 @@ struct libws_t
 	function<int(libws_t*, uint8_t*, size_t)> rd_cb = nullptr;
 	function<int(libws_t*)> wr_cb = nullptr;
 };
+
+libws_t* libws_upgrade(
+	evhttp_request* req, 
+	void* arg,
+	function<int(libws_t*)> conn_cb,
+	function<int(libws_t*)> disconn_cb,
+	function<int(libws_t*, uint8_t*, size_t)> rd_cb,
+	function<int(libws_t*)> wr_cb
+);
 
 libws_t* libws_connect(struct event_base* eventBase,
 	const char* url,

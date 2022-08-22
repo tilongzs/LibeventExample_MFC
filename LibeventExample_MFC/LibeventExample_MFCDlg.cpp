@@ -1375,94 +1375,16 @@ static void libws_evcb(struct bufferevent* bev, short what, void* ctx)
 
 static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 {
-	if (req == NULL)
-		return;
-
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
-	const char* p;
-	int ret;
-	const char* _magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-	
-	(void)arg;
-	p = evhttp_find_header(req->input_headers, "Upgrade");
-	if (p && libws_strcasecmp(p, "websocket"))
-	{
-		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
-		return;
-	}
-	p = evhttp_find_header(req->input_headers, "Sec-WebSocket-Version");
-	if (p && libws_strcasecmp(p, "13"))
-	{
-		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
-		return;
-	}
-	p = evhttp_find_header(req->input_headers, "Sec-WebSocket-Key");
-	if (p == NULL)
-	{
-		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
-		return;
-	}
 
-	char buf[256];
-	memset(buf, 0, sizeof(buf));
-	strcpy(buf, p);
-	memcpy(&buf[strlen(buf)], _magic, strlen(_magic));
-
-	char strSHA1[20];
-	ret = mbedtls_sha1_ret((const uint8_t*)buf, (int)strlen(buf), (uint8_t*)strSHA1);
-	if (ret != 0)
+	libws_t* pws = libws_upgrade(req, arg, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3),
+		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1));
+	if (!pws)
 	{
-		evhttp_send_reply(req, HTTP_INTERNAL, "", NULL);
-		return;
+		dlg->AppendMsg(L"处理WebSocket升级请求错误");
 	}
-
-	libws_t* pws = new libws_t;
-	pws->conn = req->evcon;
-	pws->is_active = true;
-	pws->conn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1);
-	pws->disconn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1);
-	pws->rd_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3);
-	pws->wr_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1);
-
-	char strBase64[256];
-	memset(strBase64, 0, sizeof(strBase64));
-	base64_encode((const uint8_t*)strSHA1, 20, strBase64);
-	sprintf(buf, "HTTP/1.1 101 Switching Protocols\r\n"
-		"Upgrade: websocket\r\n"
-		"Connection: Upgrade\r\n"
-		"Sec-WebSocket-Version: 13\r\n"
-		"Sec-WebSocket-Accept: %s\r\n"
-		"\r\n", strBase64);
-	struct bufferevent* bev = evhttp_connection_get_bufferevent(req->evcon);
-	bufferevent_enable(bev, EV_PERSIST | EV_READ | EV_WRITE);
-
-	// 修改读写上限
-	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
-	if (ret != 0)
-	{
-		dlg->AppendMsg(L"bufferevent_set_max_single_read失败");
-	}
-	ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
-	if (ret != 0)
-	{
-		dlg->AppendMsg(L"bufferevent_set_max_single_write失败");
-	}
-
-	bufferevent_write(bev, buf, strlen(buf));
-	evhttp_remove_header(req->output_headers, "Connection");
-	evhttp_remove_header(req->input_headers, "Connection");
-	evhttp_remove_header(req->output_headers, "Proxy-Connection");
-	evhttp_remove_header(req->input_headers, "Proxy-Connection");
-	evhttp_add_header(req->output_headers, "Connection", "keep-alive");
-	evhttp_add_header(req->input_headers, "Connection", "keep-alive");
-	evhttp_add_header(req->output_headers, "Proxy-Connection", "keep-alive");
-	evhttp_add_header(req->input_headers, "Proxy-Connection", "keep-alive");
-	evhttp_connection_set_timeout(req->evcon, -1);
-	evhttp_connection_set_closecb(req->evcon, libws_close_cb, pws);
-	bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, pws);
-	bufferevent_set_timeouts(bev, NULL, NULL);
-	
-	pws->conn_cb(pws);
 }
 
 static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)

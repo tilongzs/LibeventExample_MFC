@@ -109,7 +109,6 @@ private:
 	afx_msg void OnBtnHttpPostFile();
 	afx_msg void OnBtnHttpDel();
 	afx_msg void OnBtnWebsocketConnect();
-public:
 	afx_msg void OnBtnWebsocketDisconnectServer();
 	afx_msg void OnBtnDisconnWebsocketClient();
 };
