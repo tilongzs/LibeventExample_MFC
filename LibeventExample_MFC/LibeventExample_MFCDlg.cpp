@@ -1256,19 +1256,19 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 		mask_len = buf[1] & 0x80 ? 4 : 0;
 		if (n < 126 && len >= mask_len)
 		{
-			msg->header_len = 2 + mask_len;
-			msg->data_len = n;
+			msg->headerSize = 2 + mask_len;
+			msg->dataSize = n;
 		}
 		else if (n == 126 && len >= 4 + mask_len)
 		{
-			msg->header_len = 4 + mask_len;
-			msg->data_len = buf[2];
-			msg->data_len <<= 8;
-			msg->data_len |= buf[3];
+			msg->headerSize = 4 + mask_len;
+			msg->dataSize = buf[2];
+			msg->dataSize <<= 8;
+			msg->dataSize |= buf[3];
 		}
 		else if (len >= 10 + mask_len)
 		{
-			msg->header_len = 10 + mask_len;
+			msg->headerSize = 10 + mask_len;
 			tmp = buf[2];
 			tmp <<= 8;
 			tmp |= buf[3];
@@ -1284,18 +1284,18 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 			tmp |= buf[8];
 			tmp <<= 8;
 			tmp |= buf[9];
-			msg->data_len = (size_t)tmp;
+			msg->dataSize = (size_t)tmp;
 		}
 	}
-	if (msg->header_len + msg->data_len > len)
+	if (msg->headerSize + msg->dataSize > len)
 		return 0;
 	if (mask_len > 0)
 	{
-		uint8_t* p = buf + msg->header_len, * m = p - mask_len;
-		for (i = 0; i < msg->data_len; i++)
+		uint8_t* p = buf + msg->headerSize, * m = p - mask_len;
+		for (i = 0; i < msg->dataSize; i++)
 			p[i] ^= m[i & 3];
 	}
-	return msg->header_len + msg->data_len;
+	return msg->headerSize + msg->dataSize;
 }
 
 static void libws_rdcb(struct bufferevent* bev, void* ctx)
@@ -1321,7 +1321,7 @@ static void libws_rdcb(struct bufferevent* bev, void* ctx)
 					//                call(c, LIBWS_EV_WS_CTL, &m);
 					break;
 				case LIBWS_OP_PING:
-					libws_send(pws, &buf[msg.header_len], msg.data_len, LIBWS_OP_PONG);
+					libws_send(pws, &buf[msg.headerSize], msg.dataSize, LIBWS_OP_PONG);
 					//                call(c, LIBWS_EV_WS_CTL, &m);
 					break;
 				case LIBWS_OP_PONG:
@@ -1330,7 +1330,7 @@ static void libws_rdcb(struct bufferevent* bev, void* ctx)
 				case LIBWS_OP_TEXT:
 				case LIBWS_OP_BINARY:
 					if (pws->rd_cb)
-						pws->rd_cb(pws, &buf[msg.header_len], msg.data_len);
+						pws->rd_cb(pws, &buf[msg.headerSize], msg.dataSize);
 					break;
 				case LIBWS_OP_CLOSE:
 				{
@@ -1352,7 +1352,7 @@ static void libws_rdcb(struct bufferevent* bev, void* ctx)
 static void libws_wrcb(struct bufferevent* bev, void* ctx)
 {
 	libws_t* p = (libws_t*)ctx;
-	if (p->is_active == false)
+	if (!p->is_active)
 		return;
 	if (p->wr_cb)
 		p->wr_cb(p);
@@ -1417,7 +1417,6 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 	}
 
 	libws_t* pws = new libws_t;
-	pws->dlg = dlg;
 	pws->conn = req->evcon;
 	pws->is_active = true;
 	pws->conn_cb = bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1);
@@ -2217,18 +2216,20 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, this, placeholders::_1),
-		this);
+		IsUseSSL(),
+		"0.0.0.0", 0);
 #else
 	// 使用指定的本地IP、端口
 	_editPort.GetWindowText(tmpStr);
 	const int localPort = _wtoi(tmpStr);
 
-	pws = libws_connect(eventBase, uri, "0.0.0.0", localPort, IsUseSSL(),
+	pws = libws_connect(eventBase, uri,
 		bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, this, placeholders::_1),
-		this);
+		IsUseSSL(),
+		"0.0.0.0", localPort);
 #endif
 	if (!pws)
 	{
