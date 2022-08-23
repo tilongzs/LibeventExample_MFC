@@ -180,6 +180,7 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_WEBSOCKET_CONNECT, &CLibeventExample_MFCDlg::OnBtnWebsocketConnect)
 	ON_BN_CLICKED(IDC_BUTTON_WEBSOCKET_DISCONNECT_SERVER, &CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer)
 	ON_BN_CLICKED(IDC_BUTTON_DISCONN_WEBSOCKET_CLIENT, &CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient)
+	ON_BN_CLICKED(IDC_BUTTON_CREATETIMER2, &CLibeventExample_MFCDlg::OnBtnStopTimer)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -333,6 +334,10 @@ int CLibeventExample_MFCDlg::OnWebsocketRead(libws_t* pws, uint8_t* buf, size_t 
 
 int CLibeventExample_MFCDlg::OnWebsocketWrite(libws_t* pws)
 {
+	struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
+	evbuffer* output = bufferevent_get_output(bev);
+	size_t outputSize = evbuffer_get_length(output); // 总是0
+
 	AppendMsg(L"WebSocket写入数据完成");
 	return 0;
 }
@@ -346,37 +351,51 @@ LRESULT CLibeventExample_MFCDlg::OnFunction(WPARAM wParam, LPARAM lParam)
 	return TRUE;
 }
 
-void CLibeventExample_MFCDlg::OnBtnCreatetimer()
-{
-	InitTimer();
-}
-
 void OnEventTimer(evutil_socket_t fd, short event, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 	dlg->AppendMsg(L"定时器");
 }
 
-void CLibeventExample_MFCDlg::InitTimer()
+void CLibeventExample_MFCDlg::OnBtnCreatetimer()
 {
 	event_base* eventBase = event_base_new();
 
-	//ev = evtimer_new(_eventBase, DoTimer, NULL);
-	event* ev = event_new(eventBase, -1, EV_ET/*一次性*/, OnEventTimer, this);
-	if (ev) {
+	//_timer = event_new(eventBase, -1, EV_ET/*一次性*/, OnEventTimer, this);
+	event* timer = event_new(eventBase, -1, EV_PERSIST, OnEventTimer, this);
+	if (timer)
+	{
 		timeval timeout = { 2, 0 };
 		// 		timeout.tv_sec = 2;
 		// 		timeout.tv_usec = 0;
-		event_add(ev, &timeout);
+		if (0 == event_add(timer, &timeout))
+		{
+			_timer = timer;
 
-		thread([&, eventBase, ev]
-			{
-				event_base_dispatch(eventBase); // 阻塞
-				AppendMsg(L"定时器 结束");
+			thread([&, eventBase, timer]
+				{
+					event_base_dispatch(eventBase); // 阻塞
+					AppendMsg(L"定时器 结束");
 
-				event_free(ev);
-				event_base_free(eventBase);
-			}).detach();
+					event_free(timer);
+					event_base_free(eventBase);
+				}).detach();
+		}
+		else
+		{
+			event_free(timer);
+			event_base_free(eventBase);
+			AppendMsg(L"创建定时器失败");
+		}
+	}
+}
+
+void CLibeventExample_MFCDlg::OnBtnStopTimer()
+{
+	if (_timer)
+	{
+		event_del(_timer);
+		_timer = nullptr;
 	}
 }
 
@@ -2043,3 +2062,5 @@ void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 		_currentWS = nullptr;
 	}
 }
+
+

@@ -60,6 +60,9 @@ private:
 	CButton _btnStopHttpServer;
 	CIPAddressCtrl _ipRemote;
 
+	// Timer
+	event*			_timer;
+
 	// TCP
 	evconnlistener* _listener = nullptr;
 	EventData* _listenEventData = nullptr;
@@ -78,7 +81,6 @@ private:
 	bool			_isWebsocket = false;
 	libws_t*		_currentWS;
 
-	void InitTimer();
 public:
 	void AppendMsg(const WCHAR* msg);
 	bool IsUseSSL();
@@ -111,4 +113,6 @@ private:
 	afx_msg void OnBtnWebsocketConnect();
 	afx_msg void OnBtnWebsocketDisconnectServer();
 	afx_msg void OnBtnDisconnWebsocketClient();
+public:
+	afx_msg void OnBtnStopTimer();
 };
