@@ -1567,7 +1567,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 		if (httpData->bev)
 		{
-			bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+			bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 		}
 	}
 	else
@@ -1712,7 +1712,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 		if (httpData->bev)
 		{
-			bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+			bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 		}
 	}
 	else
@@ -1834,7 +1834,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 				httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 				if (httpData->bev)
 				{
-					bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+					bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 				}
 			}
 			else
@@ -1974,7 +1974,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 		if (httpData->bev)
 		{
-			bufferevent_openssl_set_allow_dirty_shutdown(httpData->bev, 1);
+			bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
 		}
 	}
 	else
