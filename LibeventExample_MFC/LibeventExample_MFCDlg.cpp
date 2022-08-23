@@ -512,11 +512,11 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
 		eventData->ssl = SSL_new(listenEventData->ssl_ctx);
 		SSL_set_fd(eventData->ssl, sockfd);
-		bev = bufferevent_openssl_socket_new(eventBase, sockfd, eventData->ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
+		bev = bufferevent_openssl_socket_new(eventBase, sockfd, eventData->ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 	else
 	{
-		bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_CLOSE_ON_FREE);
+		bev = bufferevent_socket_new(eventBase, sockfd, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 
 	if (!bev)
@@ -1301,7 +1301,7 @@ static bufferevent* OnHTTPSetBev(struct event_base* base, void* arg)
 		-1,
 		SSL_new(eventData->ssl_ctx),
 		BUFFEREVENT_SSL_ACCEPTING,
-		BEV_OPT_CLOSE_ON_FREE);
+		BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	return eventData->bev;
 }
 
@@ -1564,7 +1564,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
 		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
 		httpData->ssl = SSL_new(httpData->ssl_ctx);
-		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 		if (httpData->bev)
 		{
 			bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
@@ -1572,7 +1572,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	}
 	else
 	{
-		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 	if (httpData->bev == NULL)
 	{
@@ -1709,7 +1709,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
 		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
 		httpData->ssl = SSL_new(httpData->ssl_ctx);
-		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 		if (httpData->bev)
 		{
 			bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
@@ -1717,7 +1717,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	}
 	else
 	{
-		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 	if (httpData->bev == NULL)
 	{
@@ -1831,7 +1831,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 				// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
 				httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
 				httpData->ssl = SSL_new(httpData->ssl_ctx);
-				httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+				httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 				if (httpData->bev)
 				{
 					bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
@@ -1839,7 +1839,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 			}
 			else
 			{
-				httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+				httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 			}
 			if (httpData->bev == NULL)
 			{
@@ -1971,7 +1971,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
 		httpData->ssl_ctx = SSL_CTX_new(TLS_client_method());
 		httpData->ssl = SSL_new(httpData->ssl_ctx);
-		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+		httpData->bev = bufferevent_openssl_socket_new(eventBase, -1, httpData->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 		if (httpData->bev)
 		{
 			bufferevent_ssl_set_flags(httpData->bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN);
@@ -1979,7 +1979,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 	}
 	else
 	{
-		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_CLOSE_ON_FREE);
+		httpData->bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
 	}
 	if (httpData->bev == NULL)
 	{
