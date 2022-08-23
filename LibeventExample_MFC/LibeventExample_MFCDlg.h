@@ -24,7 +24,7 @@ using std::chrono::steady_clock;
 using std::list;
 
 class EventData;
-struct libws_t;
+class libeventWS;
 
 class CLibeventExample_MFCDlg : public CDialogEx
 {
@@ -79,23 +79,24 @@ private:
 
 	// Websocket
 	bool			_isWebsocket = false;
-	libws_t*		_currentWS;
+	libeventWS*		_currentWS;
 
 public:
 	void AppendMsg(const WCHAR* msg);
 	bool IsUseSSL();
 	void OnEventDataDeleted(EventData* eventData);
 	void SetCurrentEventData(EventData* eventData);
-	int OnWebsocketConnect(struct libws_t* pws);
-	int OnWebsocketDisconnect(struct libws_t* pws);
-	int OnWebsocketRead(struct libws_t* pws, uint8_t* buf, size_t size);
-	int OnWebsocketWrite(struct libws_t* pws);
+	int OnWebsocketConnect(libeventWS* ws);
+	int OnWebsocketDisconnect(libeventWS* ws);
+	int OnWebsocketRead(libeventWS* ws, uint8_t* buf, size_t size);
+	int OnWebsocketWrite(libeventWS* ws);
 	uint64_t GetRunningTime(); // 获取软件运行时间（毫秒）
 
 private:
 	afx_msg void OnBtnDisconnClient();
 	afx_msg void OnBtnListen();
 	afx_msg void OnBtnCreatetimer();
+	afx_msg void OnBtnStopTimer();
 	afx_msg void OnBtnStopListen();
 	afx_msg void OnBtnConnect();
 	afx_msg void OnBtnDisconnectServer();
@@ -113,6 +114,4 @@ private:
 	afx_msg void OnBtnWebsocketConnect();
 	afx_msg void OnBtnWebsocketDisconnectServer();
 	afx_msg void OnBtnDisconnWebsocketClient();
-public:
-	afx_msg void OnBtnStopTimer();
 };

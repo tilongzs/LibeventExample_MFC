@@ -16,6 +16,9 @@
     <Filter Include="Common">
       <UniqueIdentifier>{986bb915-81af-4d58-82b4-eb2b7aeffcf9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="3rd">
+      <UniqueIdentifier>{32c60822-2e3e-40a7-847a-a3248bed773f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LibeventExample_MFC.h">
@@ -39,14 +42,14 @@
     <ClInclude Include="..\Common\Common.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="libws.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\base64.h">
+    <ClInclude Include="..\Common\libeventWS.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\sha1.h">
-      <Filter>Common</Filter>
+    <ClInclude Include="..\3rd\base64.h">
+      <Filter>3rd</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rd\sha1.h">
+      <Filter>3rd</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -62,14 +65,14 @@
     <ClCompile Include="..\Common\Common.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="libws.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Common\base64.c">
+    <ClCompile Include="..\Common\libeventWS.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="..\Common\sha1.c">
-      <Filter>Common</Filter>
+    <ClCompile Include="..\3rd\base64.c">
+      <Filter>3rd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rd\sha1.c">
+      <Filter>3rd</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

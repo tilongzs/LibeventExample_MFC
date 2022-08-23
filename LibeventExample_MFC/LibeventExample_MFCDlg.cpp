@@ -3,9 +3,7 @@
 #include "LibeventExample_MFC.h"
 #include "LibeventExample_MFCDlg.h"
 #include "Common/Common.h"
-#include "Common/sha1.h"
-#include "Common/base64.h"
-#include "libws.h"
+#include "Common/libeventWS.h"
 #include <afxsock.h>
 #include <sys/types.h>  
 #include <errno.h>  
@@ -45,6 +43,7 @@ public:
 		if (ssl_ctx)
 		{
 			SSL_CTX_free(ssl_ctx);
+			ssl_ctx = nullptr;
 		}
 
 		if (ssl)
@@ -115,6 +114,12 @@ public:
 		{
 			SSL_CTX_free(ssl_ctx);
 			ssl_ctx = nullptr;
+		}
+
+		if (ssl)
+		{
+			SSL_shutdown(ssl);
+			ssl = nullptr;
 		}
 
 		if (req)
@@ -287,23 +292,33 @@ void CLibeventExample_MFCDlg::SetCurrentEventData(EventData* eventData)
 	_currentEventData = eventData;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketConnect(libws_t* pws)
+int CLibeventExample_MFCDlg::OnWebsocketConnect(libeventWS* ws)
 {
+	string remoteIP = "0";
+	int remotePort = 0;
+	const struct sockaddr* remoteAddr = evhttp_connection_get_addr(ws->evConn);
+	if (remoteAddr)
+	{
+		ConvertIPPort(*(sockaddr_in*)remoteAddr, remoteIP, remotePort);
+	}
+
+	CString tmpStr;
 	if (_httpServer)
 	{
-		AppendMsg(L"新WebSocket客户端连接");
+		tmpStr.Format(L"新WebSocket客户端 %s:%d 已连接", S2Unicode(remoteIP).c_str(), remotePort);
 	}
 	else
 	{
-		AppendMsg(L"与WebSocket服务端连接");
+		tmpStr.Format(L"与WebSocket服务端 %s:%d 已连接", S2Unicode(remoteIP).c_str(), remotePort);
 	}
+	AppendMsg(tmpStr);
 	
-	_currentWS = pws;
+	_currentWS = ws;
 	_isWebsocket = true;
 	return true;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libws_t* pws)
+int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libeventWS* ws)
 {
 	if (_httpServer)
 	{
@@ -314,7 +329,7 @@ int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libws_t* pws)
 		AppendMsg(L"与WebSocket服务端连接断开");
 	}
 
-	if (_currentWS == pws)
+	if (_currentWS == ws)
 	{
 		_currentWS = nullptr;
 	}
@@ -323,7 +338,7 @@ int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libws_t* pws)
 	return true;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketRead(libws_t* pws, uint8_t* buf, size_t size)
+int CLibeventExample_MFCDlg::OnWebsocketRead(libeventWS* ws, uint8_t* buf, size_t size)
 {
 	CString strMsg;
 	strMsg.Format(L"WebSocket收到数据 %u字节", size);
@@ -332,9 +347,9 @@ int CLibeventExample_MFCDlg::OnWebsocketRead(libws_t* pws, uint8_t* buf, size_t 
 	return 0;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketWrite(libws_t* pws)
+int CLibeventExample_MFCDlg::OnWebsocketWrite(libeventWS* ws)
 {
-	struct bufferevent* bev = evhttp_connection_get_bufferevent(pws->conn);
+	struct bufferevent* bev = evhttp_connection_get_bufferevent(ws->evConn);
 	evbuffer* output = bufferevent_get_output(bev);
 	size_t outputSize = evbuffer_get_length(output); // 总是0
 
@@ -466,21 +481,23 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 
 	// 修改socket属性
 	int bufLen = SINGLE_PACKAGE_SIZE;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) != 0)
 	{
 		return;
 	}
-	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) != 0)
 	{
 		return;
 	}
-	linger l;
-	l.l_onoff = 1;
-	l.l_linger = 0;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l)) < 0)
+
+	linger optLinger;
+	optLinger.l_onoff = 1;
+	optLinger.l_linger = 0;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&optLinger, sizeof(optLinger)) != 0)
 	{
 		return;
 	}
+
 	if (evutil_make_socket_nonblocking(sockfd) < 0)
 	{
 		return;
@@ -529,11 +546,11 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 
-	string remoteIP;
-	int remotePort;
+	string remoteIP = "0";
+	int remotePort = 0;
 	ConvertIPPort(*(sockaddr_in*)remoteAddr, remoteIP, remotePort);
 	CString tmpStr;
-	tmpStr.Format(L"threadID:%d 新客户端%s:%d 连接", this_thread::get_id(), S2Unicode(remoteIP).c_str(), remotePort);
+	tmpStr.Format(L"threadID:%d 新客户端%s:%d 已连接", this_thread::get_id(), S2Unicode(remoteIP).c_str(), remotePort);
 	eventData->dlg->AppendMsg(tmpStr);
 }
 
@@ -690,12 +707,16 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 		CString tmpStr;
 		if (events & BEV_EVENT_READING)
 		{
-			tmpStr.Format(L"BEV_EVENT_ERROR BEV_EVENT_READING错误errno:%d", errno);
+			tmpStr.Format(L"BEV_EVENT_ERROR 读错误errno:%d", errno);
 		}
 		else if (events & BEV_EVENT_WRITING)
 		{
-			tmpStr.Format(L"BEV_EVENT_ERROR BEV_EVENT_WRITING错误errno:%d", errno);
+			tmpStr.Format(L"BEV_EVENT_ERROR 写错误errno:%d", errno);
 		}
+		else
+		{
+			tmpStr.Format(L"BEV_EVENT_ERROR 错误errno:%d", errno);
+		}	
 		eventData->dlg->AppendMsg(tmpStr);
 		delete eventData;
 	}
@@ -753,18 +774,19 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	evutil_socket_t sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	// 修改socket属性
 	int bufLen = SINGLE_PACKAGE_SIZE;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (const char*)&bufLen, sizeof(int)) != 0)
 	{
 		return;
 	}
-	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) < 0)
+	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&bufLen, sizeof(int)) != 0)
 	{
 		return;
 	}
-	linger l;
-	l.l_onoff = 1;
-	l.l_linger = 0;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l)) < 0)
+
+	linger optLinger;
+	optLinger.l_onoff = 1;
+	optLinger.l_linger = 0;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (const char*)&optLinger, sizeof(optLinger)) != 0)
 	{
 		return;
 	}
@@ -867,7 +889,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 		{
 			if (_currentWS)
 			{
-				int ret = libws_send(_currentWS, msg, len, LIBWS_OP_BINARY);
+				int ret = websocketSend(_currentWS, msg, len, WS_OP_BINARY);
 				if (ret <= 0)
 				{
 					AppendMsg(L"发送数据失败");
@@ -1252,11 +1274,11 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 
-	libws_t* pws = libws_upgrade(req, arg, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
+	libeventWS* ws = handleWebsocketRequest(req, arg, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1));
-	if (!pws)
+	if (!ws)
 	{
 		dlg->AppendMsg(L"处理WebSocket升级请求错误");
 	}
@@ -2008,10 +2030,10 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
-	libws_t* pws = nullptr;
+	libeventWS* ws = nullptr;
 #ifdef _USE_RANDOM_LOCALPORT
 	// 使用随机的本地端口
-	pws = libws_connect(eventBase, uri,
+	ws = websocketConnect(eventBase, uri,
 		bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
@@ -2023,7 +2045,7 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 	_editPort.GetWindowText(tmpStr);
 	const int localPort = _wtoi(tmpStr);
 
-	pws = libws_connect(eventBase, uri,
+	ws = websocketConnect(eventBase, uri,
 		bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, this, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, this, placeholders::_1, placeholders::_2, placeholders::_3),
@@ -2031,7 +2053,7 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 		IsUseSSL(),
 		"0.0.0.0", localPort);
 #endif
-	if (!pws)
+	if (!ws)
 	{
 		AppendMsg(L"WebSocket客户端连接失败");
 	}
@@ -2049,7 +2071,7 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer()
 {
 	if (_currentWS)
 	{
-		evhttp_connection_free(_currentWS->conn);
+		_currentWS->close();
 		_currentWS = nullptr;
 	}
 }
@@ -2058,7 +2080,7 @@ void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 {
 	if (_currentWS)
 	{
-		evhttp_connection_free(_currentWS->conn);
+		_currentWS->close();
 		_currentWS = nullptr;
 	}
 }
