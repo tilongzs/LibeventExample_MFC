@@ -31,7 +31,7 @@ libeventWS::~libeventWS()
 {
 	if (is_active && evConn)
 	{
-		evhttp_connection_free(evConn);
+		is_active = false;
 		evConn = nullptr;
 	}
 
@@ -446,6 +446,7 @@ libeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	evhttp_add_header(req->input_headers, "Proxy-Connection", "keep-alive");
 	evhttp_connection_set_timeout(req->evcon, -1);
 	evhttp_connection_set_closecb(req->evcon, libws_close_cb, ws);
+	evhttp_connection_free_on_completion(ws->evConn);
 	bufferevent_setcb(bev, libws_rdcb, libws_wrcb, libws_evcb, ws);
 	bufferevent_set_timeouts(bev, NULL, NULL);
 
@@ -575,14 +576,14 @@ libeventWS* websocketConnect(struct event_base *eventBase,
         return nullptr;
     }
 
-    struct evhttp_connection* evcon = evhttp_connection_base_bufferevent_new(eventBase, NULL, bev, host, (uint16_t)(port));
-    if(NULL == evcon)
+    struct evhttp_connection* evconn = evhttp_connection_base_bufferevent_new(eventBase, NULL, bev, host, (uint16_t)(port));
+    if(NULL == evconn)
     {
 		delete[] request_url;
 		delete ws;
         return nullptr;
     }
-    ws->evConn = evcon;
+    ws->evConn = evconn;
 
     struct evhttp_request* req = evhttp_request_new(libws_connect_cb, ws);
     evhttp_add_header(req->output_headers, "Host", host);
@@ -609,8 +610,9 @@ libeventWS* websocketConnect(struct event_base *eventBase,
 		kv = kv->next.tqe_next;
 	}
 
-    evhttp_make_request(evcon, req, EVHTTP_REQ_GET, request_url);
-    evhttp_connection_set_closecb(evcon, libws_close_cb, ws);
+    evhttp_make_request(evconn, req, EVHTTP_REQ_GET, request_url);
+    evhttp_connection_set_closecb(evconn, libws_close_cb, ws);
+	evhttp_connection_free_on_completion(evconn);
 
     delete request_url;
     evhttp_uri_free(uri);
