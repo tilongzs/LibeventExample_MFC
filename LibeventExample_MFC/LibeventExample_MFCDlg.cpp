@@ -1293,16 +1293,24 @@ static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
 	evhttp_send_reply(req, 200, "OK", nullptr);
 }
 
-static bufferevent* OnHTTPSetBev(struct event_base* base, void* arg)
+static bufferevent* OnHTTPSetBev(struct event_base* eventBase, void* arg)
 {
-	EventData* eventData = (EventData*)arg;
+	EventData* listenEventData = (EventData*)arg;
 
-	eventData->bev = bufferevent_openssl_socket_new(base,
-		-1,
-		SSL_new(eventData->ssl_ctx),
-		BUFFEREVENT_SSL_ACCEPTING,
-		BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
-	return eventData->bev;
+	// 构造一个bufferevent
+	bufferevent* bev = nullptr;
+	if (listenEventData->dlg->IsUseSSL())
+	{
+		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
+		ssl_st* ssl = SSL_new(listenEventData->ssl_ctx);
+		bev = bufferevent_openssl_socket_new(eventBase, -1, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
+	}
+	else
+	{
+		bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
+	}
+
+	return bev;
 }
 
 void CLibeventExample_MFCDlg::OnBtnHttpServer()
