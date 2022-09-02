@@ -27,6 +27,11 @@ using namespace std;
 
 #define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
 
+libeventWS::libeventWS()
+{
+	recvBuf = evbuffer_new();
+}
+
 libeventWS::~libeventWS()
 {
 	if (is_active && evConn)
@@ -45,6 +50,12 @@ libeventWS::~libeventWS()
 	{
 		SSL_shutdown(ssl);
 		ssl = nullptr;
+	}
+
+	if (recvBuf)
+	{
+		evbuffer_free(recvBuf);
+		recvBuf = nullptr;
 	}
 }
 
@@ -130,52 +141,51 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 static void libws_rdcb(struct bufferevent *bev, void *ctx)
 {
     libeventWS* ws = (libeventWS*)ctx;
-    if(!ws->is_active)
+    if(!ws->is_active
+		|| NULL == ws->evConn
+		|| NULL == bev->input)
         return;
 
-	if (NULL == ws->evConn)
-		return;
-
 	struct ws_msg msg;
-	struct evbuffer* input = bufferevent_get_input(bev);
-	size_t bufSize = evbuffer_get_length(input);
-
-	uint8_t* buf = new uint8_t[bufSize];
-	size_t readSize = evbuffer_remove(input, buf, bufSize);
-	if (readSize > 0)
+	if (0 != evbuffer_add_buffer(ws->recvBuf, bev->input))
 	{
-		size_t res = libws_process(buf, (size_t)bufSize, &msg);
-		if (res)
-		{
-			switch (msg.flags & WS_FLAGS_MASK_OP)
-			{
-				case WS_OP_CONTINUE:
-					break;
-				case WS_OP_PING:
-					websocketSend(ws, &buf[msg.headerSize], msg.dataSize, WS_OP_PONG);
-					break;
-				case WS_OP_PONG:
-					break;
-				case WS_OP_TEXT:
-				case WS_OP_BINARY:
-					if (ws->rd_cb)
-						ws->rd_cb(ws, &buf[msg.headerSize], msg.dataSize);
-					break;
-				case WS_OP_CLOSE:
-				{
-					ws->close();
-				}
-					break;
-				default:
-				{
-					// 收到未知数据时关闭连接
-					ws->close();
-				}
-					break;
-			}
-		}
+		return;
 	}
-	delete[] buf;
+
+	size_t bufSize = evbuffer_get_length(ws->recvBuf);
+	uint8_t* buf = evbuffer_pullup(ws->recvBuf, bufSize);
+	size_t res = libws_process(buf, (size_t)bufSize, &msg);
+	if (res)
+	{
+		switch (msg.flags & WS_FLAGS_MASK_OP)
+		{
+		case WS_OP_CONTINUE:
+			break;
+		case WS_OP_PING:
+			websocketSend(ws, &buf[msg.headerSize], msg.dataSize, WS_OP_PONG);
+			break;
+		case WS_OP_PONG:
+			break;
+		case WS_OP_TEXT:
+		case WS_OP_BINARY:
+			if (ws->rd_cb)
+				ws->rd_cb(ws, &buf[msg.headerSize], msg.dataSize);
+			break;
+		case WS_OP_CLOSE:
+		{
+			ws->close();
+		}
+		break;
+		default:
+		{
+			// 收到未知数据时关闭连接
+			ws->close();
+		}
+		break;
+		}
+
+		evbuffer_drain(ws->recvBuf, res);
+	}
 }
 
 static void libws_wrcb(struct bufferevent *bev, void *ctx)
@@ -494,7 +504,6 @@ libeventWS* websocketConnect(struct event_base *eventBase,
         sprintf(request_url, "%s", path);
 
 	libeventWS* ws = new libeventWS;
-	memset(ws, 0, sizeof(libeventWS));
 	ws->conn_cb = conn_cb;
 	ws->disconn_cb = disconn_cb;
 	ws->rd_cb = rd_cb;

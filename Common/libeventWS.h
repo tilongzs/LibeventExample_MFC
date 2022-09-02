@@ -29,10 +29,12 @@ struct ssl_ctx_st;
 struct ssl_st;
 struct evhttp_connection;
 struct evhttp_request;
+struct evbuffer;
 
 class libeventWS
 {
 public:
+	libeventWS();
 	~libeventWS();
 	void close();
 
@@ -41,6 +43,7 @@ public:
 	evhttp_connection* evConn = nullptr;
 	ssl_ctx_st* ssl_ctx = nullptr;
 	ssl_st* ssl = nullptr;
+	evbuffer* recvBuf = nullptr;
 
 	function<int(libeventWS*)> conn_cb = nullptr;
 	function<int(libeventWS*)> disconn_cb = nullptr;

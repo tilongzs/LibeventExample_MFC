@@ -439,12 +439,14 @@ static void OnServerRead(bufferevent* bev, void* param)
 	if (sz > 0)
 	{
 		uint8_t* inputData = evbuffer_pullup(input, sz);
+		if (inputData)
+		{
+			CString tmpStr;
+			tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
+			eventData->dlg->AppendMsg(tmpStr);
 
-		CString tmpStr;
-		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
-		eventData->dlg->AppendMsg(tmpStr);
-
-		evbuffer_drain(input, sz);
+			evbuffer_drain(input, sz);
+		}
 	}
 }
 
@@ -680,12 +682,14 @@ static void OnClientRead(bufferevent* bev, void* param)
 	if (sz > 0)
 	{
 		uint8_t* inputData = evbuffer_pullup(input, sz);
+		if (inputData)
+		{
+			CString tmpStr;
+			tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
+			eventData->dlg->AppendMsg(tmpStr);
 
-		CString tmpStr;
-		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
-		eventData->dlg->AppendMsg(tmpStr);
-
-		evbuffer_drain(input, sz);
+			evbuffer_drain(input, sz);
+		}
 	}
 }
 
@@ -1123,11 +1127,13 @@ static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 	{
 		// 获取数据指针
 		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+		if (data)
+		{
+			// 处理数据...
 
-		// 处理数据...
-
-		// 清空数据
-		evbuffer_drain(req->input_buffer, len);
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+		}
 	}
 
 	// 模拟时延/超时
@@ -1139,7 +1145,6 @@ static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 	evbuffer_add(req->output_buffer, postBuf, bufSize);
 	delete[] postBuf;
 	evhttp_send_reply(req, HTTP_OK, nullptr, nullptr);
-
 	CString strMsg;
 	strMsg.Format(L"收到PostA接口%u字节数据", len);
 	dlg->AppendMsg(strMsg);
@@ -1197,11 +1202,13 @@ static void OnHTTP_API_postFileA(evhttp_request* req, void* arg)
 	{
 		// 获取数据指针
 		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+		if (data)
+		{
+			// 处理数据...
 
-		// 处理数据...
-
-		// 清空数据
-		evbuffer_drain(req->input_buffer, len);
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+		}
 	}
 
 	// 模拟时延/超时
@@ -1213,7 +1220,6 @@ static void OnHTTP_API_postFileA(evhttp_request* req, void* arg)
 	evbuffer_add(req->output_buffer, postBuf, bufSize);
 	delete[] postBuf;
 	evhttp_send_reply(req, HTTP_OK, nullptr, nullptr);
-
 	CString strMsg;
 	strMsg.Format(L"收到PostFileA接口 %s %u字节数据", fileName.c_str(), len);
 	dlg->AppendMsg(strMsg);
@@ -1229,11 +1235,13 @@ static void OnHTTP_API_putA(evhttp_request* req, void* arg)
 	{
 		// 获取数据指针
 		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+		if (data)
+		{
+			// 处理数据...
 
-		// 处理数据...
-
-		// 清空数据
-		evbuffer_drain(req->input_buffer, len);
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+		}
 	}
 
 	const char* s = "This is the test buf";
@@ -1254,11 +1262,13 @@ static void OnHTTP_API_delA(evhttp_request* req, void* arg)
 	{
 		// 获取数据指针
 		unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+		if (data)
+		{
+			// 处理数据...
 
-		// 处理数据...
-
-		// 清空数据
-		evbuffer_drain(req->input_buffer, len);
+			// 清空数据
+			evbuffer_drain(req->input_buffer, len);
+		}
 	}
 
 	const char* s = "This is the test buf";
@@ -1345,8 +1355,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_max_connections(_httpServer, 10000 * 100);
 	evhttp_set_timeout(_httpServer, 10);//设置闲置连接自动断开的超时时间(s)
 
-	_btnHTTPServer.EnableWindow(FALSE);
-	_btnStopHttpServer.EnableWindow(TRUE);
 
 	//创建、绑定、监听socket
 	CString tmpStr;
@@ -1420,6 +1428,8 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_cb(_httpServer, "/websocket", OnHTTP_Websocket, this);
 	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
 
+	_btnHTTPServer.EnableWindow(FALSE);
+	_btnStopHttpServer.EnableWindow(TRUE);
 	AppendMsg(L"HTTP 服务端启动");
 	thread([&, eventData, eventBase]
 		{
@@ -1456,18 +1466,22 @@ static void OnHttpResponseGetA(evhttp_request* req, void* arg)
 		{
 			// 获取数据指针
 			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
-			char* responseStr = new char[len + 1]{ 0 };
-			memcpy(responseStr, data, len);
+			if (data)
+			{
+				char* responseStr = new char[len + 1] { 0 };
+				memcpy(responseStr, data, len);
 
-			CString strMsg;
-			strMsg.Format(L"收到GetA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
-			httpData->dlg->AppendMsg(strMsg);
-			delete[] responseStr;
+				CString strMsg;
+				strMsg.Format(L"收到GetA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
+				httpData->dlg->AppendMsg(strMsg);
+				delete[] responseStr;
+			}
 
 			// 清空数据
 			evbuffer_drain(req->input_buffer, len);
-			evhttp_request_free(req);
 		}
+
+		evhttp_request_free(req);
 	}
 	else
 	{
@@ -1641,11 +1655,13 @@ static void OnHttpResponsePostFileA(evhttp_request* req, void* arg)
 		{
 			// 获取数据指针
 			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+			if (data)
+			{
+				// 处理数据...
 
-			// 处理数据...
-
-			// 清空数据
-			evbuffer_drain(req->input_buffer, len);
+				// 清空数据
+				evbuffer_drain(req->input_buffer, len);
+			}
 		}
 		evhttp_request_free(req);
 
@@ -1791,11 +1807,13 @@ static void OnHttpResponsePutA(evhttp_request* req, void* arg)
 		{
 			// 获取数据指针
 			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
+			if (data)
+			{
+				// 处理数据...
 
-			// 处理数据...
-
-			// 清空数据
-			evbuffer_drain(req->input_buffer, len);
+				// 清空数据
+				evbuffer_drain(req->input_buffer, len);
+			}
 		}
 
 		CString strMsg;
@@ -1935,16 +1953,20 @@ static void OnHttpResponseDelA(evhttp_request* req, void* arg)
 		{
 			// 获取数据指针
 			unsigned char* data = evbuffer_pullup(req->input_buffer, len);
-			char* responseStr = new char[len + 1]{ 0 };
-			memcpy(responseStr, data, len);
+			if (data)
+			{
+				char* responseStr = new char[len + 1] { 0 };
+				memcpy(responseStr, data, len);
 
-			CString strMsg;
-			strMsg.Format(L"收到DelA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
-			httpData->dlg->AppendMsg(strMsg);
-			delete[] responseStr;
+				CString strMsg;
+				strMsg.Format(L"收到DelA接口回复：%s", UTF8ToUnicode(responseStr).c_str());
+				httpData->dlg->AppendMsg(strMsg);
+				delete[] responseStr;
 
-			// 清空数据
-			evbuffer_drain(req->input_buffer, len);
+				// 清空数据
+				evbuffer_drain(req->input_buffer, len);
+			}
+		
 			evhttp_request_free(req);
 		}
 	}
