@@ -147,7 +147,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
         return;
 
 	struct ws_msg msg;
-	if (0 != evbuffer_add_buffer(ws->recvBuf, bev->input))
+	if (0 != bufferevent_read_buffer(bev, ws->recvBuf))
 	{
 		return;
 	}

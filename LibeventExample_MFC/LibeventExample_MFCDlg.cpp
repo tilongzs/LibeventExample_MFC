@@ -434,20 +434,19 @@ static void OnServerRead(bufferevent* bev, void* param)
 {
 	EventData* eventData = (EventData*)param;
 
-	evbuffer* input = bufferevent_get_input(bev);
-	size_t sz = evbuffer_get_length(input);
-	if (sz > 0)
+	evbuffer* buffer = evbuffer_new();
+	if (0 == bufferevent_read_buffer(bev, buffer))
 	{
-		uint8_t* inputData = evbuffer_pullup(input, sz);
-		if (inputData)
-		{
-			CString tmpStr;
-			tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
-			eventData->dlg->AppendMsg(tmpStr);
-
-			evbuffer_drain(input, sz);
-		}
+		CString tmpStr;
+		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), evbuffer_get_length(buffer));
+		eventData->dlg->AppendMsg(tmpStr);
 	}
+	else
+	{
+		eventData->dlg->AppendMsg(L"读取数据时发生错误");
+	}
+
+	evbuffer_free(buffer);
 }
 
 static void OnServerEvent(bufferevent* bev, short events, void* param)
@@ -677,20 +676,19 @@ static void OnClientRead(bufferevent* bev, void* param)
 {
 	EventData* eventData = (EventData*)param;
 
-	evbuffer* input = bufferevent_get_input(bev);
-	size_t sz = evbuffer_get_length(input);
-	if (sz > 0)
+	evbuffer* buffer = evbuffer_new();
+	if (0 == bufferevent_read_buffer(bev, buffer))
 	{
-		uint8_t* inputData = evbuffer_pullup(input, sz);
-		if (inputData)
-		{
-			CString tmpStr;
-			tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), sz);
-			eventData->dlg->AppendMsg(tmpStr);
-
-			evbuffer_drain(input, sz);
-		}
+		CString tmpStr;
+		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), evbuffer_get_length(buffer));
+		eventData->dlg->AppendMsg(tmpStr);
 	}
+	else
+	{
+		eventData->dlg->AppendMsg(L"读取数据时发生错误");
+	}
+
+	evbuffer_free(buffer);
 }
 
 static void OnClientEvent(bufferevent* bev, short events, void* param)
@@ -885,7 +883,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
 	thread([&] 
 	{
-		const int len = 1024 * 10;
+		const int len = 1024 * 1024;
 		uint8_t* msg = new uint8_t[len]{ 0 };
 		memset(msg, 'T', len - 1);
 
