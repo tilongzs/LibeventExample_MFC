@@ -24,7 +24,7 @@ using std::chrono::steady_clock;
 using std::list;
 
 class EventData;
-class libeventWS;
+class LibeventWS;
 
 class CLibeventExample_MFCDlg : public CDialogEx
 {
@@ -59,6 +59,7 @@ private:
 	CButton _btnHTTPServer;
 	CButton _btnStopHttpServer;
 	CIPAddressCtrl _ipRemote;
+	CEdit _editWSServer;
 
 	// Timer
 	event*			_timer;
@@ -79,17 +80,17 @@ private:
 
 	// Websocket
 	bool			_isWebsocket = false;
-	libeventWS*		_currentWS;
+	LibeventWS*		_currentWS;
 
 public:
 	void AppendMsg(const WCHAR* msg);
 	bool IsUseSSL();
 	void OnEventDataDeleted(EventData* eventData);
 	void SetCurrentEventData(EventData* eventData);
-	int OnWebsocketConnect(libeventWS* ws);
-	int OnWebsocketDisconnect(libeventWS* ws);
-	int OnWebsocketRead(libeventWS* ws, uint8_t* buf, size_t size);
-	int OnWebsocketWrite(libeventWS* ws);
+	int OnWebsocketConnect(LibeventWS* ws);
+	int OnWebsocketDisconnect(LibeventWS* ws);
+	int OnWebsocketRead(LibeventWS* ws, uint8_t* buf, size_t size);
+	int OnWebsocketWrite(LibeventWS* ws);
 	uint64_t GetRunningTime(); // 获取软件运行时间（毫秒）
 
 private:

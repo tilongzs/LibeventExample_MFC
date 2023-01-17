@@ -42,7 +42,7 @@
     <ClInclude Include="..\Common\Common.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\libeventWS.h">
+    <ClInclude Include="..\Common\LibeventWS.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="..\3rd\base64.h">
@@ -65,7 +65,7 @@
     <ClCompile Include="..\Common\Common.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="..\Common\libeventWS.cpp">
+    <ClCompile Include="..\Common\LibeventWS.cpp">
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="..\3rd\base64.c">

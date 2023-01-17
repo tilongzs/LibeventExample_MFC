@@ -3,7 +3,7 @@
 #include "LibeventExample_MFC.h"
 #include "LibeventExample_MFCDlg.h"
 #include "Common/Common.h"
-#include "Common/libeventWS.h"
+#include "Common/LibeventWS.h"
 #include <afxsock.h>
 #include <sys/types.h>  
 #include <errno.h>  
@@ -159,6 +159,7 @@ void CLibeventExample_MFCDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_BUTTON_HTTP_SERVER, _btnHTTPServer);
 	DDX_Control(pDX, IDC_BUTTON_HTTP_SERVER_STOP, _btnStopHttpServer);
 	DDX_Control(pDX, IDC_IPADDRESS_REMOTE, _ipRemote);
+	DDX_Control(pDX, IDC_EDIT_WS_SERVER, _editWSServer);
 }
 
 BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
@@ -199,6 +200,7 @@ BOOL CLibeventExample_MFCDlg::OnInitDialog()
 	_ipRemote.SetAddress(127, 0, 0, 1);
 	_editRemotePort.SetWindowText(L"23300");
 	_btnStopHttpServer.EnableWindow(FALSE);
+	_editWSServer.SetWindowText(L"ws://127.0.0.1:23300/websocket");
 
 	AppendMsg(L"启动");
 
@@ -292,7 +294,7 @@ void CLibeventExample_MFCDlg::SetCurrentEventData(EventData* eventData)
 	_currentEventData = eventData;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketConnect(libeventWS* ws)
+int CLibeventExample_MFCDlg::OnWebsocketConnect(LibeventWS* ws)
 {
 	string remoteIP = "0";
 	int remotePort = 0;
@@ -318,7 +320,7 @@ int CLibeventExample_MFCDlg::OnWebsocketConnect(libeventWS* ws)
 	return true;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libeventWS* ws)
+int CLibeventExample_MFCDlg::OnWebsocketDisconnect(LibeventWS* ws)
 {
 	if (_httpServer)
 	{
@@ -338,7 +340,7 @@ int CLibeventExample_MFCDlg::OnWebsocketDisconnect(libeventWS* ws)
 	return true;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketRead(libeventWS* ws, uint8_t* buf, size_t size)
+int CLibeventExample_MFCDlg::OnWebsocketRead(LibeventWS* ws, uint8_t* buf, size_t size)
 {
 	CString strMsg;
 	strMsg.Format(L"WebSocket收到数据 %u字节", size);
@@ -347,7 +349,7 @@ int CLibeventExample_MFCDlg::OnWebsocketRead(libeventWS* ws, uint8_t* buf, size_
 	return 0;
 }
 
-int CLibeventExample_MFCDlg::OnWebsocketWrite(libeventWS* ws)
+int CLibeventExample_MFCDlg::OnWebsocketWrite(LibeventWS* ws)
 {
 	struct bufferevent* bev = evhttp_connection_get_bufferevent(ws->evConn);
 	evbuffer* output = bufferevent_get_output(bev);
@@ -883,7 +885,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
 	thread([&] 
 	{
-		const int len = 1024 * 1024;
+		const int len = 1024 * 50;
 		uint8_t* msg = new uint8_t[len]{ 0 };
 		memset(msg, 'T', len - 1);
 
@@ -1282,7 +1284,7 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 
-	libeventWS* ws = handleWebsocketRequest(req, arg, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
+	LibeventWS* ws = handleWebsocketRequest(req, arg, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1));
@@ -2054,11 +2056,12 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 	const int remotePort = _wtoi(tmpStr);
 
 	CString strURI;
-	strURI.Format(L"ws://127.0.0.1:%d/websocket?q=test&s=some+thing", remotePort);
+	_editWSServer.GetWindowText(strURI);
+	//strURI.Format(L"ws://127.0.0.1:%d/websocket?q=test&s=some+thing", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
-	libeventWS* ws = nullptr;
+	LibeventWS* ws = nullptr;
 #ifdef _USE_RANDOM_LOCALPORT
 	// 使用随机的本地端口
 	ws = websocketConnect(eventBase, uri,

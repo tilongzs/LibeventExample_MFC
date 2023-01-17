@@ -31,11 +31,11 @@ struct evhttp_connection;
 struct evhttp_request;
 struct evbuffer;
 
-class libeventWS
+class LibeventWS
 {
 public:
-	libeventWS();
-	~libeventWS();
+	LibeventWS();
+	~LibeventWS();
 	void close();
 
     bool is_active = false;
@@ -45,33 +45,33 @@ public:
 	ssl_st* ssl = nullptr;
 	evbuffer* recvBuf = nullptr;
 
-	function<int(libeventWS*)> conn_cb = nullptr;
-	function<int(libeventWS*)> disconn_cb = nullptr;
-	function<int(libeventWS*, uint8_t*, size_t)> rd_cb = nullptr;
-	function<int(libeventWS*)> wr_cb = nullptr;
+	function<int(LibeventWS*)> conn_cb = nullptr;
+	function<int(LibeventWS*)> disconn_cb = nullptr;
+	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb = nullptr;
+	function<int(LibeventWS*)> wr_cb = nullptr;
 };
 
 // 服务端
-libeventWS* handleWebsocketRequest(
+LibeventWS* handleWebsocketRequest(
 	evhttp_request* req, 
 	void* arg,
-	function<int(libeventWS*)> conn_cb,
-	function<int(libeventWS*)> disconn_cb,
-	function<int(libeventWS*, uint8_t*, size_t)> rd_cb,
-	function<int(libeventWS*)> wr_cb
+	function<int(LibeventWS*)> conn_cb,
+	function<int(LibeventWS*)> disconn_cb,
+	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb,
+	function<int(LibeventWS*)> wr_cb
 	);
 
 // 客户端
-libeventWS* websocketConnect(struct event_base* eventBase,
+LibeventWS* websocketConnect(struct event_base* eventBase,
 	const char* url,
-	function<int(libeventWS*)> conn_cb,
-	function<int(libeventWS*)> disconn_cb,
-	function<int(libeventWS*, uint8_t*, size_t)> rd_cb,
-	function<int(libeventWS*)> wr_cb,
+	function<int(LibeventWS*)> conn_cb,
+	function<int(LibeventWS*)> disconn_cb,
+	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb,
+	function<int(LibeventWS*)> wr_cb,
 	bool useSSL = false, 
 	const char* localIP = "0.0.0.0",
 	int localPort = 0
 	);
 
 // 发送数据
-int websocketSend(libeventWS* ws, uint8_t* pdata, size_t size, uint8_t op = WS_OP_BINARY);
+int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t size, uint8_t op = WS_OP_BINARY);

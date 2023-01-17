@@ -129,7 +129,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>event.lib;event_core.lib;event_openssl.lib;libssl.lib;event_extra.lib</AdditionalDependencies>
+      <AdditionalDependencies>eventd.lib;event_cored.lib;event_openssld.lib;libssl.lib;event_extrad.lib</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -200,7 +200,7 @@
     <ClInclude Include="..\3rd\base64.h" />
     <ClInclude Include="..\3rd\sha1.h" />
     <ClInclude Include="..\Common\Common.h" />
-    <ClInclude Include="..\Common\libeventWS.h" />
+    <ClInclude Include="..\Common\LibeventWS.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LibeventExample_MFC.h" />
     <ClInclude Include="LibeventExample_MFCDlg.h" />
@@ -220,7 +220,7 @@
     <ClCompile Include="..\Common\Common.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\Common\libeventWS.cpp" />
+    <ClCompile Include="..\Common\LibeventWS.cpp" />
     <ClCompile Include="LibeventExample_MFC.cpp" />
     <ClCompile Include="LibeventExample_MFCDlg.cpp" />
     <ClCompile Include="pch.cpp">

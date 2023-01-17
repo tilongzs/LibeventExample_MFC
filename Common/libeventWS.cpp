@@ -1,5 +1,5 @@
 ﻿#include "pch.h"
-#include "libeventWS.h"
+#include "LibeventWS.h"
 #include "3rd/sha1.h"
 #include "3rd/base64.h"
 #include "Common/Common.h"
@@ -27,12 +27,12 @@ using namespace std;
 
 #define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
 
-libeventWS::libeventWS()
+LibeventWS::LibeventWS()
 {
 	recvBuf = evbuffer_new();
 }
 
-libeventWS::~libeventWS()
+LibeventWS::~LibeventWS()
 {
 	if (is_active && evConn)
 	{
@@ -59,7 +59,7 @@ libeventWS::~libeventWS()
 	}
 }
 
-void libeventWS::close()
+void LibeventWS::close()
 {
 	if (evConn)
 	{
@@ -71,7 +71,7 @@ void libeventWS::close()
 
 static void libws_close_cb(struct evhttp_connection *conn, void *arg)
 {
-    libeventWS* ws = (libeventWS*)arg;
+    LibeventWS* ws = (LibeventWS*)arg;
 
     if (ws->disconn_cb)
     {
@@ -140,7 +140,7 @@ static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
 
 static void libws_rdcb(struct bufferevent *bev, void *ctx)
 {
-    libeventWS* ws = (libeventWS*)ctx;
+    LibeventWS* ws = (LibeventWS*)ctx;
     if(!ws->is_active
 		|| NULL == ws->evConn
 		|| NULL == bev->input)
@@ -173,13 +173,17 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 			break;
 		case WS_OP_CLOSE:
 		{
+			evbuffer_drain(ws->recvBuf, res);
 			ws->close();
+			return;
 		}
 		break;
 		default:
 		{
+			evbuffer_drain(ws->recvBuf, res);
 			// 收到未知数据时关闭连接
 			ws->close();
+			return;
 		}
 		break;
 		}
@@ -190,7 +194,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 
 static void libws_wrcb(struct bufferevent *bev, void *ctx)
 {
-    libeventWS* ws = (libeventWS*)ctx;
+    LibeventWS* ws = (LibeventWS*)ctx;
     if(!ws->is_active)
         return;
     if(ws->wr_cb)
@@ -201,7 +205,7 @@ static void libws_evcb(struct bufferevent *bev, short what, void *ctx)
 {
     if(what & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
     {
-		libeventWS* ws = (libeventWS*)ctx;
+		LibeventWS* ws = (LibeventWS*)ctx;
 		ws->close();
     }
     return;
@@ -211,7 +215,7 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
 {
     if(NULL == req || NULL == arg)
         return;
-	libeventWS* ws = (libeventWS*)arg;
+	LibeventWS* ws = (LibeventWS*)arg;
 
     if(evbuffer_get_length(req->input_buffer))
         evbuffer_drain(req->input_buffer, evbuffer_get_length(req->input_buffer));
@@ -309,7 +313,7 @@ static size_t makeHeader(size_t len, int op, bool is_client, uint8_t* buf)
 	return n;
 }
 
-int websocketSend(libeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
+int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
 {
 	if (WS_OP_TEXT != op && WS_OP_BINARY != op)
 	{
@@ -367,11 +371,11 @@ int websocketSend(libeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
 	}
 }
 
-libeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
-	function<int(libeventWS*)> conn_cb, 
-	function<int(libeventWS*)> disconn_cb, 
-	function<int(libeventWS*, uint8_t*, size_t)> rd_cb, 
-	function<int(libeventWS*)> wr_cb)
+LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
+	function<int(LibeventWS*)> conn_cb, 
+	function<int(LibeventWS*)> disconn_cb, 
+	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb, 
+	function<int(LibeventWS*)> wr_cb)
 {
 	if (NULL == req)
 		return nullptr;
@@ -413,7 +417,7 @@ libeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 		return nullptr;
 	}
 
-	libeventWS* ws = new libeventWS;
+	LibeventWS* ws = new LibeventWS;
 	ws->evConn = req->evcon;
 	ws->is_active = true;
 	ws->conn_cb = conn_cb;
@@ -468,12 +472,12 @@ libeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	return ws;
 }
 
-libeventWS* websocketConnect(struct event_base *eventBase,
+LibeventWS* websocketConnect(struct event_base *eventBase,
     const char *url,
-	function<int(libeventWS*)> conn_cb,
-	function<int(libeventWS*)> disconn_cb,
-	function<int(libeventWS*, uint8_t*, size_t)> rd_cb,
-	function<int(libeventWS*)> wr_cb,
+	function<int(LibeventWS*)> conn_cb,
+	function<int(LibeventWS*)> disconn_cb,
+	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb,
+	function<int(LibeventWS*)> wr_cb,
 	bool useSSL,
 	const char* localIP,
 	int localPort)
@@ -503,7 +507,7 @@ libeventWS* websocketConnect(struct event_base *eventBase,
     else
         sprintf(request_url, "%s", path);
 
-	libeventWS* ws = new libeventWS;
+	LibeventWS* ws = new LibeventWS;
 	ws->conn_cb = conn_cb;
 	ws->disconn_cb = disconn_cb;
 	ws->rd_cb = rd_cb;
