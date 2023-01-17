@@ -315,17 +315,8 @@ static size_t makeHeader(size_t len, int op, bool is_client, uint8_t* buf)
 
 int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
 {
-// 	if (WS_OP_TEXT != op && WS_OP_BINARY != op)
-// 	{
-// 		return -1;
-// 	}
-
     if(nullptr == ws)
         return -1;
-    //if(!pdata)
-    //    return -2;
-    //if(0 == dataSize)
-    //    return -3;
     if(!ws->evConn)   // 未连接成功
         return -4;
     if(!ws->is_active) // 连接无效
