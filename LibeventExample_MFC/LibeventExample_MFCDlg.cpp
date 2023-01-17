@@ -593,10 +593,10 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 			首选在安装好openssl的机器上创建私钥文件：server.key
 			> openssl genrsa -out server.key 2048
 
-			得到私钥文件后我们需要一个证书请求文件：server.csr，将来你可以拿这个证书请求向正规的证书管理机构申请证书
+			得到私钥文件后我们需要一个证书请求文件（Certificate Signing Request）：server.csr，将来你可以拿这个证书请求向正规的证书管理机构申请证书
 			> openssl req -new -key server.key -out server.csr
 
-			最后我们生成自签名的x.509证书（有效期365天）：server.crt
+			最后我们生成有效期365天的自签名的x.509证书（Certificate）：server.crt
 			> openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt
 		*/
 		CString exeDir = GetModuleDir();
@@ -2102,8 +2102,7 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer()
 {
 	if (_currentWS)
 	{
-		_currentWS->close();
-		_currentWS = nullptr;
+		websocketClose(_currentWS);
 	}
 }
 
@@ -2111,8 +2110,7 @@ void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 {
 	if (_currentWS)
 	{
-		_currentWS->close();
-		_currentWS = nullptr;
+		websocketClose(_currentWS);
 	}
 }
 

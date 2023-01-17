@@ -36,7 +36,7 @@ class LibeventWS
 public:
 	LibeventWS();
 	~LibeventWS();
-	void close();
+	void free();
 
     bool is_active = false;
     bool is_client = false;
@@ -75,3 +75,6 @@ LibeventWS* websocketConnect(struct event_base* eventBase,
 
 // 发送数据
 int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t size, uint8_t op = WS_OP_BINARY);
+
+// 关闭连接
+void websocketClose(LibeventWS* ws);
