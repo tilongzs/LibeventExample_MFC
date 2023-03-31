@@ -351,10 +351,6 @@ int CLibeventExample_MFCDlg::OnWebsocketRead(LibeventWS* ws, uint8_t* buf, size_
 
 int CLibeventExample_MFCDlg::OnWebsocketWrite(LibeventWS* ws)
 {
-	struct bufferevent* bev = evhttp_connection_get_bufferevent(ws->evConn);
-	evbuffer* output = bufferevent_get_output(bev);
-	size_t outputSize = evbuffer_get_length(output); // 总是0
-
 	AppendMsg(L"WebSocket写入数据完成");
 	return 0;
 }
@@ -1355,7 +1351,6 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_max_connections(_httpServer, 10000 * 100);
 	evhttp_set_timeout(_httpServer, 10);//设置闲置连接自动断开的超时时间(s)
 
-
 	//创建、绑定、监听socket
 	CString tmpStr;
 	_editPort.GetWindowText(tmpStr);
@@ -1430,7 +1425,9 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 
 	_btnHTTPServer.EnableWindow(FALSE);
 	_btnStopHttpServer.EnableWindow(TRUE);
-	AppendMsg(L"HTTP 服务端启动");
+	CString strLog;
+	strLog.Format(L"HTTP 服务端启动 websocket地址：%s://127.0.0.1:%d", IsUseSSL() ? L"wss" : L"ws", port);
+	AppendMsg(strLog);
 	thread([&, eventData, eventBase]
 		{
 			event_base_dispatch(eventBase); // 阻塞

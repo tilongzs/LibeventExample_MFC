@@ -81,8 +81,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
-    <IncludePath>$(SolutionDir);$(SolutionDir)libevent\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)libevent\lib\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir);$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -92,7 +92,7 @@
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg">
-    <VcpkgEnabled>false</VcpkgEnabled>
+    <VcpkgEnabled>true</VcpkgEnabled>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -129,7 +129,8 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>eventd.lib;event_cored.lib;event_openssld.lib;libssl.lib;event_extrad.lib</AdditionalDependencies>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
