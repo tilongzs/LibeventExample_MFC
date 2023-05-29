@@ -38,6 +38,11 @@ static const INT64 HTTP_MAX_BODY_SIZE = (INT64)1024 * 1024 * 1024 * 2 - 1024; //
 class EventData
 {
 public:
+	EventData(CLibeventExample_MFCDlg* parent) 
+	{
+		dlg = parent;
+	};
+
 	~EventData()
 	{
 		if (ssl_ctx)
@@ -77,6 +82,7 @@ public:
 			if (-1 != fd)
 			{
 				closesocket(fd);
+				fd = -1;
 			}
 		}
 	}
@@ -435,8 +441,22 @@ static void OnServerRead(bufferevent* bev, void* param)
 	evbuffer* buffer = evbuffer_new();
 	if (0 == bufferevent_read_buffer(bev, buffer))
 	{
+		size_t bufferLength = evbuffer_get_length(buffer);
+		if (bufferLength)
+		{
+			// 获取数据指针
+			unsigned char* data = evbuffer_pullup(buffer, bufferLength);
+			if (data)
+			{
+				// 处理数据...
+
+				// 清空数据
+				evbuffer_drain(buffer, bufferLength);
+			}
+		}		
+
 		CString tmpStr;
-		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), evbuffer_get_length(buffer));
+		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), bufferLength);
 		eventData->dlg->AppendMsg(tmpStr);
 	}
 	else
@@ -503,8 +523,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 	}
 
 	// 构造一个bufferevent
-	EventData* eventData = new EventData;
-	eventData->dlg = listenEventData->dlg;
+	EventData* eventData = new EventData(listenEventData->dlg);
 	bufferevent* bev = nullptr;
 	if (listenEventData->dlg->IsUseSSL())
 	{
@@ -579,8 +598,7 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 	localAddr.sin_family = AF_INET;
 	localAddr.sin_port = htons(port);
 
-	EventData* eventData = new EventData;
-	eventData->dlg = this;
+	EventData* eventData = new EventData(this);
 
 	if (IsUseSSL())
 	{
@@ -677,6 +695,20 @@ static void OnClientRead(bufferevent* bev, void* param)
 	evbuffer* buffer = evbuffer_new();
 	if (0 == bufferevent_read_buffer(bev, buffer))
 	{
+		size_t bufferLength = evbuffer_get_length(buffer);
+		if (bufferLength)
+		{
+			// 获取数据指针
+			unsigned char* data = evbuffer_pullup(buffer, bufferLength);
+			if (data)
+			{
+				// 处理数据...
+
+				// 清空数据
+				evbuffer_drain(buffer, bufferLength);
+			}
+		}
+
 		CString tmpStr;
 		tmpStr.Format(L"threadID:%d 收到%u字节", this_thread::get_id(), evbuffer_get_length(buffer));
 		eventData->dlg->AppendMsg(tmpStr);
@@ -740,8 +772,7 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	event_config_free(cfg);
 	cfg = nullptr;
 
-	EventData* eventData = new EventData;
-	eventData->dlg = this;
+	EventData* eventData = new EventData(this);
 	if (IsUseSSL())
 	{
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
@@ -966,8 +997,7 @@ void CLibeventExample_MFCDlg::OnBtnUdpBind()
 		return;
 	}
 
-	EventData* eventData = new EventData;
-	eventData->dlg = this;
+	EventData* eventData = new EventData(this);
 
 	_currentEvent = event_new(NULL, -1, 0, NULL, NULL);
 	int ret = event_assign(_currentEvent, eventBase, _currentSockfd, EV_READ | EV_PERSIST, OnUDPRead, (void*)eventData);
@@ -1360,8 +1390,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	localAddr.sin_family = AF_INET;
 	localAddr.sin_port = htons(port);
 
-	EventData* eventData = new EventData;
-	eventData->dlg = this;
+	EventData* eventData = new EventData(this);
 
 	if (IsUseSSL())
 	{
