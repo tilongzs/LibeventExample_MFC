@@ -368,6 +368,7 @@ int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
 void websocketClose(LibeventWS* ws)
 {
 	websocketSend(ws, nullptr, 0, WS_OP_CLOSE);
+	ws->is_active = false;
 }
 
 LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
