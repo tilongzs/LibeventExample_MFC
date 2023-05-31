@@ -44,6 +44,7 @@ public:
 	ssl_ctx_st* ssl_ctx = nullptr;
 	ssl_st* ssl = nullptr;
 	evbuffer* recvBuf = nullptr;
+	void* arg = nullptr;
 
 	function<int(LibeventWS*)> conn_cb = nullptr;
 	function<int(LibeventWS*)> disconn_cb = nullptr;

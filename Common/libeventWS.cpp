@@ -383,7 +383,6 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	int ret;
 	const char* magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-	(void)arg;
 	p = evhttp_find_header(req->input_headers, "Upgrade");
 	if (p && libws_strcasecmp(p, "websocket"))
 	{
@@ -423,6 +422,7 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	ws->disconn_cb = disconn_cb;
 	ws->rd_cb = rd_cb;
 	ws->wr_cb = wr_cb;
+	ws->arg = arg;
 
 	char strBase64[256];
 	memset(strBase64, 0, sizeof(strBase64));
