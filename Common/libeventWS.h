@@ -54,7 +54,6 @@ public:
 // 服务端
 LibeventWS* handleWebsocketRequest(
 	struct evhttp_request* req,
-	void* arg,
 	function<int(LibeventWS*)> conn_cb,
 	function<int(LibeventWS*)> disconn_cb,
 	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb,

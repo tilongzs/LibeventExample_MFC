@@ -55,6 +55,7 @@ LibeventWS::~LibeventWS()
 static void libws_close_cb(struct evhttp_connection *conn, void *arg)
 {
     LibeventWS* ws = (LibeventWS*)arg;
+	ws->is_active = false;
 
     if (ws->disconn_cb)
     {
@@ -360,7 +361,7 @@ void LibeventWS::Close()
 	}	
 }
 
-LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
+LibeventWS* handleWebsocketRequest(evhttp_request* req,
 	function<int(LibeventWS*)> conn_cb, 
 	function<int(LibeventWS*)> disconn_cb, 
 	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb, 
@@ -408,7 +409,6 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	ws->disconn_cb = disconn_cb;
 	ws->rd_cb = rd_cb;
 	ws->wr_cb = wr_cb;
-	ws->arg = arg;
 
 	char strBase64[256]{ 0 };
 	base64_encode((const uint8_t*)strSHA1, 20, strBase64);

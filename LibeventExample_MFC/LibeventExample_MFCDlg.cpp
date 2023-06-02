@@ -1309,14 +1309,17 @@ static void OnHTTP_Websocket(evhttp_request* req, void* arg)
 {
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 
-	LibeventWS* ws = handleWebsocketRequest(req, arg, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
+	LibeventWS* ws = handleWebsocketRequest(req, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketWrite, dlg, placeholders::_1));
 	if (!ws)
 	{
 		dlg->AppendMsg(L"处理WebSocket升级请求错误");
+		evhttp_send_reply(req, HTTP_INTERNAL, "", nullptr);
 	}
+
+	// 升级成功不能调用evhttp_send_reply，否则会直接连接断开
 }
 
 static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
