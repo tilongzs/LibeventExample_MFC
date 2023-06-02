@@ -34,7 +34,7 @@ LibeventWS::LibeventWS()
 
 LibeventWS::~LibeventWS()
 {
-	free();
+	Close();
 
 	if (ssl_ctx)
 	{
@@ -52,16 +52,6 @@ LibeventWS::~LibeventWS()
 	{
 		evbuffer_free(recvBuf);
 		recvBuf = nullptr;
-	}
-}
-
-void LibeventWS::free()
-{
-	if (evConn && is_active)
-	{
-		is_active = false;	
-		evhttp_connection_free(evConn);
-		evConn = nullptr;
 	}
 }
 
@@ -156,7 +146,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 		case WS_OP_CONTINUE:
 			break;
 		case WS_OP_PING:
-			websocketSend(ws, &buf[msg.headerSize], msg.dataSize, WS_OP_PONG);
+			ws->Send(&buf[msg.headerSize], msg.dataSize, WS_OP_PONG);
 			break;
 		case WS_OP_PONG:
 			break;
@@ -168,7 +158,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 		case WS_OP_CLOSE:
 		{
 			evbuffer_drain(ws->recvBuf, res);
-			ws->free();
+			ws->Close();
 			return;
 		}
 		break;
@@ -176,7 +166,7 @@ static void libws_rdcb(struct bufferevent *bev, void *ctx)
 		{
 			evbuffer_drain(ws->recvBuf, res);
 			// 收到未知数据时关闭连接
-			ws->free();
+			ws->Close();
 			return;
 		}
 		break;
@@ -200,7 +190,7 @@ static void libws_evcb(struct bufferevent *bev, short what, void *ctx)
     if(what & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT))    // 结束、错误、超时，都关闭websocket
     {
 		LibeventWS* ws = (LibeventWS*)ctx;
-		ws->free();
+		ws->Close();
     }
     return;
 }
@@ -228,13 +218,13 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
                 int ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
                 if (ret != 0)
                 {
-					ws->free();
+					ws->Close();
                     return;
                 }
                 ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
                 if (ret != 0)
                 {
-					ws->free();
+					ws->Close();
 					return;
                 }
 
@@ -261,7 +251,7 @@ static void libws_connect_cb(struct evhttp_request *req, void *arg)
     else
     {
 		// 服务器不正常返回，断开连接
-		ws->free();
+		ws->Close();
     }
 }
 
@@ -307,19 +297,17 @@ static size_t makeHeader(size_t len, int op, bool is_client, uint8_t* buf)
 	return n;
 }
 
-int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
+int LibeventWS::Send(uint8_t* pdata, size_t dataSize, uint8_t op)
 {
-    if(nullptr == ws)
-        return -1;
-    if(!ws->evConn)   // 未连接成功
+    if(!evConn)   // 未连接成功
         return -4;
-    if(!ws->is_active) // 连接无效
+    if(!is_active) // 连接无效
         return -5;
 
     struct evbuffer* evBuf = evbuffer_new();
 
 	uint8_t header[14] = {0};
-	size_t headerSize = makeHeader(dataSize, op, ws->is_client, header);
+	size_t headerSize = makeHeader(dataSize, op, is_client, header);
     if (0 != evbuffer_add(evBuf, header, headerSize))
     {
         evbuffer_free(evBuf);
@@ -336,7 +324,7 @@ int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
 	}	
 
     // 客户端采用掩码发送
-    if (ws->is_client)
+    if (is_client)
     {
 		size_t evBufSize = evbuffer_get_length(evBuf);
 		uint8_t* buf = evbuffer_pullup(evBuf, evBufSize);
@@ -347,7 +335,7 @@ int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
             p[i] ^= mask[i & 3];
     }
 
-	struct bufferevent* bev = evhttp_connection_get_bufferevent(ws->evConn);
+	struct bufferevent* bev = evhttp_connection_get_bufferevent(evConn);
 	if (0 != bufferevent_write_buffer(bev, evBuf))
 	{
         evbuffer_free(evBuf);
@@ -359,10 +347,21 @@ int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t dataSize, uint8_t op)
 	}
 }
 
-void websocketClose(LibeventWS* ws)
+void LibeventWS::Close()
 {
-	websocketSend(ws, nullptr, 0, WS_OP_CLOSE);
-	ws->is_active = false;
+	if (!is_active)
+	{
+		return;
+	}
+	is_active = false;
+
+	Send(nullptr, 0, WS_OP_CLOSE);
+
+	if (evConn)
+	{
+		evhttp_connection_free(evConn);
+		evConn = nullptr;
+	}	
 }
 
 LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,

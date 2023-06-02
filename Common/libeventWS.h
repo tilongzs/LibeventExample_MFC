@@ -36,7 +36,6 @@ class LibeventWS
 public:
 	LibeventWS();
 	~LibeventWS();
-	void free();
 
     bool is_active = false;
     bool is_client = false;
@@ -50,6 +49,12 @@ public:
 	function<int(LibeventWS*)> disconn_cb = nullptr;
 	function<int(LibeventWS*, uint8_t*, size_t)> rd_cb = nullptr;
 	function<int(LibeventWS*)> wr_cb = nullptr;
+
+	// 发送数据
+	int Send(uint8_t* pdata, size_t size, uint8_t op = WS_OP_BINARY);
+
+	// 关闭连接
+	void Close();
 };
 
 // 服务端
@@ -73,9 +78,3 @@ LibeventWS* websocketConnect(struct event_base* eventBase,
 	const char* localIP = "0.0.0.0",
 	int localPort = 0
 	);
-
-// 发送数据
-int websocketSend(LibeventWS* ws, uint8_t* pdata, size_t size, uint8_t op = WS_OP_BINARY);
-
-// 关闭连接
-void websocketClose(LibeventWS* ws);

@@ -921,7 +921,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 		{
 			if (_currentWS)
 			{
-				int ret = websocketSend(_currentWS, msg, len, WS_OP_BINARY);
+				int ret = _currentWS->Send(msg, len, WS_OP_BINARY);
 				if (ret <= 0)
 				{
 					AppendMsg(L"发送数据失败");
@@ -2129,7 +2129,7 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer()
 {
 	if (_currentWS)
 	{
-		websocketClose(_currentWS);
+		_currentWS->Close();
 	}
 }
 
@@ -2137,7 +2137,7 @@ void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 {
 	if (_currentWS)
 	{
-		websocketClose(_currentWS);
+		_currentWS->Close();
 	}
 }
 
