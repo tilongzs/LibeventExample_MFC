@@ -341,6 +341,7 @@ int CLibeventExample_MFCDlg::OnWebsocketDisconnect(LibeventWS* ws)
 	{
 		_currentWS = nullptr;
 	}
+	delete ws;
 	_isWebsocket = false;
 
 	return true;

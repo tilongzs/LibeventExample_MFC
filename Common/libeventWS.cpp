@@ -34,11 +34,7 @@ LibeventWS::LibeventWS()
 
 LibeventWS::~LibeventWS()
 {
-	if (is_active && evConn)
-	{
-		is_active = false;
-		evConn = nullptr;
-	}
+	free();
 
 	if (ssl_ctx)
 	{
@@ -61,7 +57,7 @@ LibeventWS::~LibeventWS()
 
 void LibeventWS::free()
 {
-	if (evConn)
+	if (evConn && is_active)
 	{
 		is_active = false;	
 		evhttp_connection_free(evConn);
@@ -77,8 +73,6 @@ static void libws_close_cb(struct evhttp_connection *conn, void *arg)
     {
         ws->disconn_cb(ws);
     }
-
-    delete ws;
 }
 
 static size_t libws_process(uint8_t* buf, size_t len, struct ws_msg* msg)
