@@ -63,7 +63,6 @@ public:
 				closesocket(fd);
 			}
 			bufferevent_replacefd(bev, -1);
-
 			bufferevent_free(bev);
 		}
 

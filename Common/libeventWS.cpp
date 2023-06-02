@@ -46,12 +46,6 @@ LibeventWS::~LibeventWS()
 		SSL_shutdown(ssl);
 	}
 
-	if (bev)
-	{
-		bufferevent_replacefd(bev, -1);
-		bufferevent_free(bev);
-	}
-
 	if (recvBuf)
 	{
 		evbuffer_free(recvBuf);
@@ -363,7 +357,6 @@ void LibeventWS::Close()
 	if (evConn)
 	{
 		evhttp_connection_free(evConn);
-		evConn = nullptr;
 	}	
 }
 
@@ -426,7 +419,6 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 		"Sec-WebSocket-Accept: %s\r\n"
 		"\r\n", strBase64);
 	struct bufferevent* bev = evhttp_connection_get_bufferevent(req->evcon);
-	ws->bev = bev;
 	bufferevent_enable(bev, EV_PERSIST | EV_READ | EV_WRITE);
 
 	// 修改读写上限（可选）
