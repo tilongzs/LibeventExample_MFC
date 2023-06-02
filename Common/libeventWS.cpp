@@ -39,19 +39,22 @@ LibeventWS::~LibeventWS()
 	if (ssl_ctx)
 	{
 		SSL_CTX_free(ssl_ctx);
-		ssl_ctx = nullptr;
 	}
 
 	if (ssl)
 	{
 		SSL_shutdown(ssl);
-		ssl = nullptr;
+	}
+
+	if (bev)
+	{
+		bufferevent_replacefd(bev, -1);
+		bufferevent_free(bev);
 	}
 
 	if (recvBuf)
 	{
 		evbuffer_free(recvBuf);
-		recvBuf = nullptr;
 	}
 }
 
@@ -373,11 +376,7 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	if (NULL == req)
 		return nullptr;
 
-	const char* p;
-	int ret;
-	const char* magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-	p = evhttp_find_header(req->input_headers, "Upgrade");
+	const char* p = evhttp_find_header(req->input_headers, "Upgrade");
 	if (p && libws_strcasecmp(p, "websocket"))
 	{
 		evhttp_send_reply(req, HTTP_BADMETHOD, "", NULL);
@@ -396,13 +395,13 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 		return nullptr;
 	}
 
-	char buf[256];
-	memset(buf, 0, sizeof(buf));
+	char buf[256]{ 0 };
 	strcpy(buf, p);
+	const char* magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	memcpy(&buf[strlen(buf)], magic, strlen(magic));
 
-	char strSHA1[20];
-	ret = mbedtls_sha1_ret((const uint8_t*)buf, (int)strlen(buf), (uint8_t*)strSHA1);
+	char strSHA1[20]{ 0 };
+	int ret = mbedtls_sha1_ret((const uint8_t*)buf, (int)strlen(buf), (uint8_t*)strSHA1);
 	if (ret != 0)
 	{
 		evhttp_send_reply(req, HTTP_INTERNAL, "", NULL);
@@ -418,8 +417,7 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 	ws->wr_cb = wr_cb;
 	ws->arg = arg;
 
-	char strBase64[256];
-	memset(strBase64, 0, sizeof(strBase64));
+	char strBase64[256]{ 0 };
 	base64_encode((const uint8_t*)strSHA1, 20, strBase64);
 	sprintf(buf, "HTTP/1.1 101 Switching Protocols\r\n"
 		"Upgrade: websocket\r\n"
@@ -428,17 +426,20 @@ LibeventWS* handleWebsocketRequest(evhttp_request* req, void* arg,
 		"Sec-WebSocket-Accept: %s\r\n"
 		"\r\n", strBase64);
 	struct bufferevent* bev = evhttp_connection_get_bufferevent(req->evcon);
+	ws->bev = bev;
 	bufferevent_enable(bev, EV_PERSIST | EV_READ | EV_WRITE);
 
 	// 修改读写上限（可选）
 	ret = bufferevent_set_max_single_read(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
+		delete ws;
 		return nullptr;
 	}
 	ret = bufferevent_set_max_single_write(bev, SINGLE_PACKAGE_SIZE);
 	if (ret != 0)
 	{
+		delete ws;
 		return nullptr;
 	}
 
@@ -581,6 +582,7 @@ LibeventWS* websocketConnect(struct event_base *eventBase,
         delete ws;
         return nullptr;
     }
+	ws->bev = bev;
 
     struct evhttp_connection* evconn = evhttp_connection_base_bufferevent_new(eventBase, NULL, bev, host, (uint16_t)(port));
     if(NULL == evconn)

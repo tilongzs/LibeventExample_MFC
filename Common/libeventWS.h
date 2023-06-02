@@ -22,14 +22,7 @@ struct ws_msg
 #define WS_OP_CLOSE 8
 #define WS_OP_PING 9
 #define WS_OP_PONG 10
-
 #define WS_FLAGS_MASK_OP 15
-
-struct ssl_ctx_st;
-struct ssl_st;
-struct evhttp_connection;
-struct evhttp_request;
-struct evbuffer;
 
 class LibeventWS
 {
@@ -39,10 +32,11 @@ public:
 
     bool is_active = false;
     bool is_client = false;
-	evhttp_connection* evConn = nullptr;
-	ssl_ctx_st* ssl_ctx = nullptr;
-	ssl_st* ssl = nullptr;
-	evbuffer* recvBuf = nullptr;
+	struct evhttp_connection* evConn = nullptr;
+	struct bufferevent* bev = nullptr;
+	struct ssl_ctx_st* ssl_ctx = nullptr;
+	struct ssl_st* ssl = nullptr;
+	struct evbuffer* recvBuf = nullptr;
 	void* arg = nullptr;
 
 	function<int(LibeventWS*)> conn_cb = nullptr;
@@ -59,7 +53,7 @@ public:
 
 // 服务端
 LibeventWS* handleWebsocketRequest(
-	evhttp_request* req, 
+	struct evhttp_request* req,
 	void* arg,
 	function<int(LibeventWS*)> conn_cb,
 	function<int(LibeventWS*)> disconn_cb,

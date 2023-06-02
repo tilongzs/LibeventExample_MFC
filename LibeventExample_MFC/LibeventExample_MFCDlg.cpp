@@ -48,7 +48,6 @@ public:
 		if (ssl_ctx)
 		{
 			SSL_CTX_free(ssl_ctx);
-			ssl_ctx = nullptr;
 		}
 
 		if (ssl)
