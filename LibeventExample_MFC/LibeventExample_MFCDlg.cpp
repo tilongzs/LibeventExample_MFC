@@ -1600,7 +1600,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpGet()
 	const int remotePort = _wtoi(tmpStr);
 
 	CString strURI;
-	strURI.Format(L"http://127.0.0.1:%d/api/getA?q=test&s=some+thing", remotePort);
+	strURI.Format(L"http://127.0.0.1:%d", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
@@ -1668,7 +1668,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPost()
 	const int remotePort = _wtoi(tmpStr);
 
 	CString strURI;
-	strURI.Format(L"http://127.0.0.1:%d/api/postA?q=test&s=some+thing", remotePort);
+	strURI.Format(L"http://127.0.0.1:%d", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
@@ -1815,7 +1815,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	}
 
 	CString strURI;
-	strURI.Format(L"http://127.0.0.1:%d/api/postFileA?q=test&s=some+thing", remotePort);
+	strURI.Format(L"http://127.0.0.1:%d", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
@@ -1939,7 +1939,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPut()
 	thread([&, remotePort]
 		{
 			CString strURI;
-			strURI.Format(L"http://127.0.0.1:%d/api/putA?q=test&s=some+thing", remotePort);
+			strURI.Format(L"http://127.0.0.1:%d", remotePort);
 			string utf8URI = UnicodeToUTF8(strURI);
 			const char* uri = utf8URI.c_str();
 
@@ -2083,7 +2083,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpDel()
 	const int remotePort = _wtoi(tmpStr);
 
 	CString strURI;
-	strURI.Format(L"http://127.0.0.1:%d/api/delA?q=test&s=some+thing", remotePort);
+	strURI.Format(L"http://127.0.0.1:%d", remotePort);
 	string utf8URI = UnicodeToUTF8(strURI);
 	const char* uri = utf8URI.c_str();
 
