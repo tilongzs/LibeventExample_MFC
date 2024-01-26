@@ -16,6 +16,7 @@
 #include "event2/keyvalq_struct.h"
 #include "event2/http_struct.h"
 #include "event2/bufferevent_struct.h"
+#include "event2/ws.h"
 
 using std::function;
 using std::future;
@@ -25,6 +26,7 @@ using std::list;
 
 class EventData;
 class LibeventWS;
+struct evws_connection;
 
 class CLibeventExample_MFCDlg : public CDialogEx
 {
@@ -80,7 +82,8 @@ private:
 
 	// Websocket
 	bool			_isWebsocket = false;
-	LibeventWS*		_currentWS;
+	LibeventWS* _currentWS = nullptr;
+	evws_connection* _wsConnection = nullptr;
 
 public:
 	void AppendMsg(const WCHAR* msg);
@@ -91,7 +94,8 @@ public:
 	int OnWebsocketDisconnect(LibeventWS* ws);
 	int OnWebsocketRead(LibeventWS* ws, uint8_t* buf, size_t size);
 	int OnWebsocketWrite(LibeventWS* ws);
-	uint64_t GetRunningTime(); // 获取软件运行时间（毫秒）
+	void SetWSConnection(evws_connection* wsConnection);
+	void OnWebsocketClose(evws_connection* wsConnection);
 
 private:
 	afx_msg void OnBtnDisconnClient();

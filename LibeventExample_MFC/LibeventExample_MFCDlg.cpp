@@ -11,13 +11,11 @@
 #include <thread>
 #include <fcntl.h>
 #include <sys/stat.h>
-
-// vcpkg管理
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/sha.h>
 #include <wincrypt.h>
-/*******************************/
+
+#include "openssl/ssl.h"
+#include "openssl/err.h"
+#include "openssl/sha.h"
 
 using namespace std;
 using namespace chrono;
@@ -358,6 +356,24 @@ int CLibeventExample_MFCDlg::OnWebsocketWrite(LibeventWS* ws)
 {
 	AppendMsg(L"WebSocket写入数据完成");
 	return 0;
+}
+
+void CLibeventExample_MFCDlg::SetWSConnection(evws_connection* wsConnection)
+{
+	_wsConnection = wsConnection;
+	_isWebsocket = true;
+	AppendMsg(L"新Websocket客户端连接");
+}
+
+void CLibeventExample_MFCDlg::OnWebsocketClose(evws_connection* wsConnection)
+{
+	AppendMsg(L"WebSocket客户端连接断开");
+	
+	if (_wsConnection == wsConnection)
+	{
+		_wsConnection = nullptr;
+	}
+	_isWebsocket = false;
 }
 
 LRESULT CLibeventExample_MFCDlg::OnFunction(WPARAM wParam, LPARAM lParam)
@@ -911,7 +927,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
 	thread([&] 
 	{
-		const int len = 1024 * 50;
+		const size_t len = 1024 * 50;
 		uint8_t* msg = new uint8_t[len]{ 0 };
 		memset(msg, 'T', len - 1);
 
@@ -924,6 +940,11 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 				{
 					AppendMsg(L"发送数据失败");
 				}
+			}
+
+			if (_wsConnection)
+			{
+				evws_send_binary(_wsConnection, (const char*)msg, len);
 			}
 		}
 		else
@@ -1060,7 +1081,8 @@ void CLibeventExample_MFCDlg::OnBtnUdpClose()
 
 static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 {
-	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
 	// http://127.0.0.1:23300/api/getA?q=test&s=some+thing
 
 	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
@@ -1102,7 +1124,8 @@ static void OnHTTP_API_getA(evhttp_request* req, void* arg)
 
 static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 {
-	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
 	// http://127.0.0.1:23300/api/postA?q=test&s=some+thing
 
 	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
@@ -1177,7 +1200,8 @@ static void OnHTTP_API_postA(evhttp_request* req, void* arg)
 
 static void OnHTTP_API_postFileA(evhttp_request* req, void* arg)
 {
-	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
 	// http://127.0.0.1:23300/api/postFileA?q=test&s=some+thing
 
 	const evhttp_uri* evURI = evhttp_request_get_evhttp_uri(req);
@@ -1250,10 +1274,10 @@ static void OnHTTP_API_postFileA(evhttp_request* req, void* arg)
 	dlg->AppendMsg(strMsg);
 }
 
-
 static void OnHTTP_API_putA(evhttp_request* req, void* arg)
 {
-	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
 
 	size_t len = evbuffer_get_length(req->input_buffer);
 	if (len > 0)
@@ -1280,7 +1304,8 @@ static void OnHTTP_API_putA(evhttp_request* req, void* arg)
 
 static void OnHTTP_API_delA(evhttp_request* req, void* arg)
 {
-	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
 
 	size_t len = evbuffer_get_length(req->input_buffer);
 	if (len > 0)
@@ -1305,10 +1330,55 @@ static void OnHTTP_API_delA(evhttp_request* req, void* arg)
 	dlg->AppendMsg(strMsg);
 }
 
-static void OnHTTP_Websocket(evhttp_request* req, void* arg)
+static void OnWebsocketRecv(evws_connection* evws, int type, const unsigned char* data, size_t len, void* arg)
 {
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
+
+	CString strMsg;
+	strMsg.Format(L"WebSocket收到数据 %u字节", len);
+	dlg->AppendMsg(strMsg);
+}
+
+static void OnWebsocketClose(struct evws_connection* evws, void* arg)
+{
+	// websocket连接断开
 	CLibeventExample_MFCDlg* dlg = (CLibeventExample_MFCDlg*)arg;
 
+	dlg->OnWebsocketClose(evws);
+	// 不要再调用evws_connection_free
+}
+
+static void OnHTTP_Websocket(evhttp_request* req, void* arg)
+{
+	HttpData* httpData = (HttpData*)arg;
+	CLibeventExample_MFCDlg* dlg = httpData->dlg;
+
+	if (!req)
+	{
+		dlg->AppendMsg(L"连接Websocket服务器失败");
+		return;
+	}
+
+	// libevent自带ws
+// 	evws_connection* ws = evws_new_session(req, OnWebsocketRecv, httpData, 0);
+// 	if (!ws) 
+// 	{
+// 		dlg->AppendMsg(L"处理WebSocket升级请求错误");
+// 		return;
+// 	}
+// 	dlg->SetWSConnection(ws);
+// 
+// // 	struct sockaddr_storage addr;
+// // 	socklen_t len = sizeof(addr);
+// // 	evutil_socket_t fd = bufferevent_getfd(evws_connection_get_bufferevent(ws));
+// // 	getpeername(fd, (struct sockaddr*)&addr, &len);
+// 
+// 	evws_connection_set_closecb(ws, OnWebsocketClose, dlg);
+// 	evhttp_request_free(req);
+	/*****************************************************************************************/
+
+	// 自实现ws
 	LibeventWS* ws = handleWebsocketRequest(req, bind(&CLibeventExample_MFCDlg::OnWebsocketConnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketDisconnect, dlg, placeholders::_1),
 		bind(&CLibeventExample_MFCDlg::OnWebsocketRead, dlg, placeholders::_1, placeholders::_2, placeholders::_3),
@@ -1446,18 +1516,21 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		The first entry is: key="q", value="test"
 		The second entry is: key="s", value="some thing"
 	*/
-	evhttp_set_cb(_httpServer, "/api/getA", OnHTTP_API_getA, this);
-	evhttp_set_cb(_httpServer, "/api/postA", OnHTTP_API_postA, this);
-	evhttp_set_cb(_httpServer, "/api/postFileA", OnHTTP_API_postFileA, this);
-	evhttp_set_cb(_httpServer, "/api/putA", OnHTTP_API_putA, this);
-	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, this);
-	evhttp_set_cb(_httpServer, "/websocket", OnHTTP_Websocket, this);
-	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, this);
+	HttpData* httpData = new HttpData;
+	httpData->dlg = this;
+
+	evhttp_set_cb(_httpServer, "/api/getA", OnHTTP_API_getA, httpData);
+	evhttp_set_cb(_httpServer, "/api/postA", OnHTTP_API_postA, httpData);
+	evhttp_set_cb(_httpServer, "/api/postFileA", OnHTTP_API_postFileA, httpData);
+	evhttp_set_cb(_httpServer, "/api/putA", OnHTTP_API_putA, httpData);
+	evhttp_set_cb(_httpServer, "/api/delA", OnHTTP_API_delA, httpData);
+	evhttp_set_cb(_httpServer, "/websocket", OnHTTP_Websocket, httpData);
+	evhttp_set_gencb(_httpServer, OnHTTPUnmatchedRequest, httpData);
 
 	_btnHTTPServer.EnableWindow(FALSE);
 	_btnStopHttpServer.EnableWindow(TRUE);
 	CString strLog;
-	strLog.Format(L"HTTP 服务端启动 websocket地址：%s://127.0.0.1:%d", IsUseSSL() ? L"wss" : L"ws", port);
+	strLog.Format(L"HTTP 服务端启动 websocket地址：%s://127.0.0.1:%d/websocket", IsUseSSL() ? L"wss" : L"ws", port);
 	AppendMsg(strLog);
 	thread([&, eventData, eventBase]
 		{
@@ -2125,7 +2198,6 @@ void CLibeventExample_MFCDlg::OnBtnWebsocketConnect()
 		}).detach();
 }
 
-
 void CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer()
 {
 	if (_currentWS)
@@ -2139,6 +2211,11 @@ void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 	if (_currentWS)
 	{
 		_currentWS->Close();
+	}
+
+	if (_wsConnection)
+	{
+		evws_close(_wsConnection, 0);
 	}
 }
 
