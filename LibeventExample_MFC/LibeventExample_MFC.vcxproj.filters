@@ -51,6 +51,9 @@
     <ClInclude Include="..\3rd\sha1.h">
       <Filter>3rd</Filter>
     </ClInclude>
+    <ClInclude Include="..\Common\TCPHandler.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LibeventExample_MFC.cpp">
@@ -73,6 +76,9 @@
     </ClCompile>
     <ClCompile Include="..\3rd\sha1.c">
       <Filter>3rd</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\TCPHandler.cpp">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

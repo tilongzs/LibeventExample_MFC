@@ -1,7 +1,12 @@
 ﻿#include "Common.h"
+#include "spdlog/spdlog.h"
+#include "sutfcpplib/utf_string.h"
 #include <stringapiset.h>
 #include <Shlwapi.h>
 #include <memory>
+#include <filesystem>
+
+using namespace std;
 
 template<typename ... Args>
 std::string static str_format(const std::string& format, Args ... args)
@@ -183,6 +188,17 @@ void ConvertIPPort(DWORD ip, int port, SOCKADDR_IN& addr)
 	addr.sin_port = htons(port);
 }
 
+void ConvertIPLocal2Local(const ULONG lIP, string& strIP)
+{
+	char charBuf[16] = { 0 };
+	sprintf_s(charBuf, "%u.%u.%u.%u",
+		(unsigned char)*((char*)&lIP + 3),
+		(unsigned char)*((char*)&lIP + 2),
+		(unsigned char)*((char*)&lIP + 1),
+		(unsigned char)*((char*)&lIP + 0));
+	strIP = charBuf;
+}
+
 CString GetModuleDir()
 {
 	WCHAR buf[MAX_PATH];
@@ -259,4 +275,64 @@ string Base64Encode(const char* bytes, unsigned int len)
 	}
 
 	return ret;
+}
+
+std::string CurentDirectory()
+{
+	char buffer[260];
+	if (_getcwd(buffer, sizeof(buffer)) != nullptr) {
+		return buffer;
+	}
+	return ""; // 获取路径失败
+}
+
+static const char kPathSeparatorWindows = '\\';
+static const char* PathSeparatorSet = "\\/";  // Intentionally no ':'
+static const char kPathSeparator = '/';
+std::string ConcatPathFileName(const std::string& path, const std::string& filename)
+{
+	std::string filepath = path;
+	if (filepath.length()) {
+		char& filepath_last_character = filepath.back();
+		if (filepath_last_character == kPathSeparatorWindows) {
+			filepath_last_character = kPathSeparator;
+		}
+		else if (filepath_last_character != kPathSeparator) {
+			filepath += kPathSeparator;
+		}
+	}
+	filepath += filename;
+	// Ignore './' at the start of filepath.
+	if (filepath[0] == '.' && filepath[1] == kPathSeparator) {
+		filepath.erase(0, 2);
+	}
+
+	std::replace(filepath.begin(), filepath.end(), '\\', '/'); // PosixPath
+	return filepath;
+}
+
+std::string StripFileName(const std::string& filepath)
+{
+	size_t i = filepath.find_last_of(PathSeparatorSet);
+	return i != std::string::npos ? filepath.substr(0, i) : "";
+}
+
+void debug(string_view utf8Log)
+{
+	spdlog::debug(utf8Log);
+}
+
+void info(string_view utf8Log)
+{
+	spdlog::info(utf8Log);
+}
+
+void warn(string_view utf8Log)
+{
+	spdlog::warn(utf8Log);
+}
+
+void error(string_view utf8Log)
+{
+	spdlog::error(utf8Log);
 }

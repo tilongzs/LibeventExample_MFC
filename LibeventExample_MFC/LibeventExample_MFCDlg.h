@@ -18,6 +18,9 @@
 #include "event2/bufferevent_struct.h"
 #include "event2/ws.h"
 
+#include "Common/TCPHandler.h"
+#include "TCPHandler.h"
+
 using std::function;
 using std::future;
 using std::mutex;
@@ -67,7 +70,7 @@ private:
 	event*			_timer;
 
 	// TCP
-	evconnlistener* _listener = nullptr;
+	TCPHandler	_tcpHandler;
 	EventData* _listenEventData = nullptr;
 	mutex		_mtxCurrentEventData;
 	EventData* _currentEventData = nullptr;
@@ -98,6 +101,12 @@ public:
 	void OnWebsocketClose(evws_connection* wsConnection);
 
 private:
+	void onAccept(EventData* eventData, const sockaddr* remoteAddr);
+	void onConnected(EventData* eventData);
+	void onDisconnect(const EventData* eventData);
+	void onRecv(const unsigned char* data, size_t dataSize);
+	void onSend();	
+
 	afx_msg void OnBtnDisconnClient();
 	afx_msg void OnBtnListen();
 	afx_msg void OnBtnCreatetimer();

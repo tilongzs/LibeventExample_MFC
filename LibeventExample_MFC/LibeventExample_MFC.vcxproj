@@ -81,7 +81,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
-    <IncludePath>$(SolutionDir);$(SolutionDir)3rd\libevent\include;$(SolutionDir)3rd\openssl\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir);$(SolutionDir)3rd\libevent\include;$(SolutionDir)3rd\openssl\include;$(SolutionDir)Common;$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)3rd\libevent\debug\lib;$(SolutionDir)3rd\openssl\debug\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -121,7 +121,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WINDOWS;_DEBUG;_CRT_SECURE_NO_WARNINGS;_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <ExceptionHandling>Async</ExceptionHandling>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -201,6 +201,7 @@
     <ClInclude Include="..\3rd\sha1.h" />
     <ClInclude Include="..\Common\Common.h" />
     <ClInclude Include="..\Common\LibeventWS.h" />
+    <ClInclude Include="..\Common\TCPHandler.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LibeventExample_MFC.h" />
     <ClInclude Include="LibeventExample_MFCDlg.h" />
@@ -221,6 +222,9 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="..\Common\LibeventWS.cpp" />
+    <ClCompile Include="..\Common\TCPHandler.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="LibeventExample_MFC.cpp" />
     <ClCompile Include="LibeventExample_MFCDlg.cpp" />
     <ClCompile Include="pch.cpp">
