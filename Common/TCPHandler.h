@@ -15,56 +15,13 @@
 #include "event2/bufferevent_struct.h"
 #include "openssl/ssl.h"
 
+#include "NetFrame.h"
+
 using std::mutex;
 using std::chrono::steady_clock;
 using std::function;
 using std::unique_ptr;
 using std::string_view;
-
-// 网络数据类型
-enum class NetDataType
-{
-	NetDataType_NULL,
-	HelloCenter,	// 连接大厅
-	RoomServerInfo,	// 房间服务器信息
-	HelloRoom,	// 连接房间
-	WordsVersionRq, // 词库版本请求
-	WordsVersionRp, // 词库版本回复
-	WordsPairRq, // 词库请求
-	WordsPairRp, // 词库回复
-	Login,		// 用户登录
-
-	NetDataTypeEnd
-};
-
-// 网络包基本信息
-#pragma pack(push)
-#pragma pack(1) // 1字节内存对齐
-struct PackageBase
-{
-	uint16_t	ioNum = 0;	// 通信流水号
-	bool		needConfirm = false;	// 需要回复确认（只有收到回复确认的消息，才会继续发送下一个）
-	uint16_t	dataType = 0; // 网络数据类型(DataType)
-	uint32_t	dataSize = 0; // 数据大小
-};
-#pragma pack(pop) // #pragma pack(1)
-
-class LocalPackage
-{
-public:
-	~LocalPackage()
-	{
-		delete[] package;
-	}
-
-	PackageBase	head;
-
-	uint8_t* package = nullptr; // 已接收的数据
-	uint64_t receivedBytes;	// 已接收字节数
-	unique_ptr<steady_clock::time_point> startTime = nullptr;	// 传输的开始时间
-
-	uint64_t PackageSize() { return sizeof(PackageBase) + head.dataSize; } // 包总大小
-};
 
 class EventData;
 interface NetHandler
@@ -80,28 +37,45 @@ protected:
 class TCPHandler : public NetHandler
 {
 public:
-	bool listen(int port, bool isUseSSL, function<void(EventData*, const sockaddr* remoteAdd)> cbOnAccept, function<void(const EventData* eventData)> cbOnDisconnect, function<void(const unsigned char*, size_t)> cbOnRecv, function<void()> cbOnSend);
+	bool listen(int port, bool isUseSSL, 
+		function<void(EventData*, const sockaddr* remoteAdd)> cbOnAccept, 
+		function<void(const EventData* eventData)> cbOnDisconnect, 
+		function<void(const EventData*, const LocalPackage*)> cbOnRecv, 
+		function<void(const EventData*, const LocalPackage*)> cbOnSend);
 	void stopListen();
-	bool connect(const char* remoteIP, int remotePort, int localPort, bool isUseSSL, function<void(EventData* eventData)> cbOnConnected, function<void(const EventData* eventData)> cbOnDisconnect, function<void(const unsigned char*, size_t)> cbOnRecv, function<void()> cbOnSend); // localPort为0表示随机本地端口
-	bool send(const EventData* eventData, const unsigned char* data, size_t dataSize);
+	bool connect(const char* remoteIP, int remotePort, int localPort/*0表示随机本地端口*/, bool isUseSSL,
+		function<void(EventData* eventData)> cbOnConnected, 
+		function<void(const EventData* eventData)> cbOnDisconnect, 
+		function<void(const EventData*, const LocalPackage*)> cbOnRecv, 
+		function<void(const EventData*, const LocalPackage*)> cbOnSend);
+	bool sendList(IOData* ioData, bool priority = false); // 加入发送队列	
+	bool sendList(EventData* eventData, char* data, size_t dataSize);
+	bool sendList(EventData* eventData, const string& filePath);
 
 	virtual void onEventDataDeleted(EventData* eventData);
 	void onAccept(EventData* eventData, const sockaddr* remoteAddr);
 	void onConnected(EventData* eventData);
-	void onRecv(const unsigned char* data, size_t dataSize);	
-	void onSend();
+	void onRecv(SocketData* socketData, const char* data, size_t dataSize);
+	void onSend(SocketData* socketData);
 
 private:
 	evconnlistener* _listener = nullptr;
 	EventData* _listenEventData = nullptr;
-	function<void(EventData*, const sockaddr* remoteAddr)> _onAccept;
-	function<void(EventData* eventData)> _onConnected;
-	function<void(const EventData* eventData)> _onDisconnect;
-	function<void(const unsigned char*, size_t)> _onRecv;
-	function<void()> _onSend;
+	list<EventData*>	_connectedEventDataList;
+
+	function<void(EventData*, const sockaddr* /*remoteAddr*/)> _onAccept;
+	function<void(EventData*)> _onConnected;
+	function<void(const EventData* )> _onDisconnect;
+	function<void(const EventData*, const LocalPackage*)> _onRecv;
+	function<void(const EventData*, const LocalPackage*)> _onSend;
+
+	bool send(const EventData* eventData, const char* data, size_t dataSize); // 立即发送
+	void send(IOData* ioData); // 立即发送
+	void OnDirectSendComplete(SocketData* socketData, IOData* ioData);
+	void ReplyConfirm(SocketData* socketData, ULONG ioNum);
 };
 
-class EventData
+class EventData : public SocketData
 {
 public:
 	EventData(NetHandler* parent)
@@ -140,8 +114,10 @@ public:
 		}
 	}
 
-	void close()
+	virtual void close()
 	{
+		__super::close();
+
 		if (bev)
 		{
 			evutil_socket_t fd = bufferevent_getfd(bev);
@@ -158,6 +134,3 @@ public:
 	ssl_ctx_st* ssl_ctx = nullptr;
 	ssl_st* ssl = nullptr;
 };
-
-
-

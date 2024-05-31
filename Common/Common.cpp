@@ -311,6 +311,12 @@ std::string ConcatPathFileName(const std::string& path, const std::string& filen
 	return filepath;
 }
 
+std::string StripPath(const std::string& filepath)
+{
+	size_t i = filepath.find_last_of(PathSeparatorSet);
+	return i != std::string::npos ? filepath.substr(i + 1) : filepath;
+}
+
 std::string StripFileName(const std::string& filepath)
 {
 	size_t i = filepath.find_last_of(PathSeparatorSet);
@@ -335,4 +341,21 @@ void warn(string_view utf8Log)
 void error(string_view utf8Log)
 {
 	spdlog::error(utf8Log);
+}
+
+size_t getFileSize(const char* filePath)
+{
+	if (nullptr == filePath)
+	{
+		return 0;
+	}
+
+	struct _stat64i32 statbuf;
+#ifdef _WIN32
+	std::wstring wsFilePath = UTF8ToUnicode(filePath);
+	_wstat(wsFilePath.c_str(), &statbuf);
+#else
+	_stat(filePath, &statbuf);
+#endif
+	return statbuf.st_size;
 }

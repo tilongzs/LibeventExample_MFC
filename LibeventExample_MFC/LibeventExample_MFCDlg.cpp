@@ -148,6 +148,7 @@ BEGIN_MESSAGE_MAP(CLibeventExample_MFCDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_WEBSOCKET_DISCONNECT_SERVER, &CLibeventExample_MFCDlg::OnBtnWebsocketDisconnectServer)
 	ON_BN_CLICKED(IDC_BUTTON_DISCONN_WEBSOCKET_CLIENT, &CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient)
 	ON_BN_CLICKED(IDC_BUTTON_CREATETIMER2, &CLibeventExample_MFCDlg::OnBtnStopTimer)
+	ON_BN_CLICKED(IDC_BUTTON_SEND_FILE, &CLibeventExample_MFCDlg::OnBtnSendFile)
 END_MESSAGE_MAP()
 
 BOOL CLibeventExample_MFCDlg::OnInitDialog()
@@ -423,16 +424,18 @@ void CLibeventExample_MFCDlg::onConnected(EventData* eventData)
 	_currentEventData = eventData;
 }
 
-void CLibeventExample_MFCDlg::onRecv(const unsigned char* data, size_t dataSize)
+void CLibeventExample_MFCDlg::onRecv(const EventData* socketData, const LocalPackage* localPackage)
 {
 	CString tmpStr;
-	tmpStr.Format(L"收到%u字节", dataSize);
+	tmpStr.Format(L"收到%u字节", localPackage->headInfo.size);
 	AppendMsg(tmpStr);
 }
 
-void CLibeventExample_MFCDlg::onSend()
+void CLibeventExample_MFCDlg::onSend(const EventData* socketData, const LocalPackage* localPackage)
 {
-	AppendMsg(L"数据已发送");
+	CString tmpStr;
+	tmpStr.Format(L"已发送%u字节", localPackage->headInfo.size);
+	AppendMsg(tmpStr);
 }
 
 void CLibeventExample_MFCDlg::onDisconnect(const EventData* eventData)
@@ -461,7 +464,7 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 	_editPort.GetWindowText(tmpStr);
 	const int port = _wtoi(tmpStr);
 
-	bool ret = _tcpHandler.listen(port, IsUseSSL(), std::bind(&CLibeventExample_MFCDlg::onAccept, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onDisconnect, this, _1), std::bind(&CLibeventExample_MFCDlg::onRecv, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onSend, this));
+	bool ret = _tcpHandler.listen(port, IsUseSSL(), std::bind(&CLibeventExample_MFCDlg::onAccept, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onDisconnect, this, _1), std::bind(&CLibeventExample_MFCDlg::onRecv, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onSend, this, _1, _2));
 	if (ret)
 	{
 		AppendMsg(L"TCP开始监听");
@@ -491,7 +494,7 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	_editPort.GetWindowText(tmpStr);
 	const int localPort = _wtoi(tmpStr);
 
-	bool ret = _tcpHandler.connect(remoteIP.c_str(), remotePort, localPort, IsUseSSL(), std::bind(&CLibeventExample_MFCDlg::onConnected, this, _1), std::bind(&CLibeventExample_MFCDlg::onDisconnect, this, _1), std::bind(&CLibeventExample_MFCDlg::onRecv, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onSend, this));
+	bool ret = _tcpHandler.connect(remoteIP.c_str(), remotePort, localPort, IsUseSSL(), std::bind(&CLibeventExample_MFCDlg::onConnected, this, _1), std::bind(&CLibeventExample_MFCDlg::onDisconnect, this, _1), std::bind(&CLibeventExample_MFCDlg::onRecv, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onSend, this, _1, _2));
 	if (ret)
 	{
 		AppendMsg(L"TCP开始连接");
@@ -534,21 +537,50 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 			{
 				evws_send_binary(_wsConnection, (const char*)msg, len);
 			}
+
+			delete[] msg;
 		}
 		else
 		{
-			if (_currentEventData)
+			if (!_currentEventData)
 			{
+				AppendMsg(L"当前没有TCP连接");
+				return;
+			}
+
+			if (_currentEvent)
+			{
+				// UDP
 				int ret = bufferevent_write(_currentEventData->bev, msg, len);
 				if (ret != 0)
 				{
 					AppendMsg(L"发送数据失败");
 				}
-			}
-		}
 
-		delete[] msg;
+				delete[] msg;
+			}
+			else
+			{
+				_tcpHandler.sendList(_currentEventData, (char*)msg, len);
+			}
+		}	
 	}).detach();
+}
+
+void CLibeventExample_MFCDlg::OnBtnSendFile()
+{
+	if (!_currentEventData)
+	{
+		AppendMsg(L"当前没有TCP连接");
+		return;
+	}
+
+	CFileDialog dlg(TRUE);
+	if (dlg.DoModal())
+	{
+		CString filePath = dlg.GetPathName();
+		_tcpHandler.sendList(_currentEventData, UnicodeToUTF8(filePath));
+	}
 }
 
 static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
@@ -1805,5 +1837,4 @@ void CLibeventExample_MFCDlg::OnBtnDisconnWebsocketClient()
 		evws_close(_wsConnection, 0);
 	}
 }
-
 

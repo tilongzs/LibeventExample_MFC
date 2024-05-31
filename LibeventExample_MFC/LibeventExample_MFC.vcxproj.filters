@@ -54,6 +54,9 @@
     <ClInclude Include="..\Common\TCPHandler.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="..\Common\NetFrame.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LibeventExample_MFC.cpp">
@@ -78,6 +81,9 @@
       <Filter>3rd</Filter>
     </ClCompile>
     <ClCompile Include="..\Common\TCPHandler.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\NetFrame.cpp">
       <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>

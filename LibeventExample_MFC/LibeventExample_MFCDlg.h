@@ -69,11 +69,10 @@ private:
 	// Timer
 	event*			_timer;
 
-	// TCP
-	TCPHandler	_tcpHandler;
-	EventData* _listenEventData = nullptr;
 	mutex		_mtxCurrentEventData;
 	EventData* _currentEventData = nullptr;
+	// TCP
+	TCPHandler	_tcpHandler;
 
 	// UDP
 	evutil_socket_t _currentSockfd = -1;
@@ -104,8 +103,8 @@ private:
 	void onAccept(EventData* eventData, const sockaddr* remoteAddr);
 	void onConnected(EventData* eventData);
 	void onDisconnect(const EventData* eventData);
-	void onRecv(const unsigned char* data, size_t dataSize);
-	void onSend();	
+	void onRecv(const EventData* socketData, const LocalPackage* localPackage);
+	void onSend(const EventData* socketData, const LocalPackage* localPackage);
 
 	afx_msg void OnBtnDisconnClient();
 	afx_msg void OnBtnListen();
@@ -115,6 +114,7 @@ private:
 	afx_msg void OnBtnConnect();
 	afx_msg void OnBtnDisconnectServer();
 	afx_msg void OnBtnSendMsg();
+	afx_msg void OnBtnSendFile();
 	afx_msg void OnBtnUdpBind();
 	afx_msg void OnBtnUdpSendMsg();
 	afx_msg void OnBtnUdpClose();

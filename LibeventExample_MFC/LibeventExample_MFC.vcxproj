@@ -201,6 +201,7 @@
     <ClInclude Include="..\3rd\sha1.h" />
     <ClInclude Include="..\Common\Common.h" />
     <ClInclude Include="..\Common\LibeventWS.h" />
+    <ClInclude Include="..\Common\NetFrame.h" />
     <ClInclude Include="..\Common\TCPHandler.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LibeventExample_MFC.h" />
@@ -222,6 +223,9 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="..\Common\LibeventWS.cpp" />
+    <ClCompile Include="..\Common\NetFrame.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\Common\TCPHandler.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>

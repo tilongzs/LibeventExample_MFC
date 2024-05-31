@@ -27,11 +27,14 @@ string Int2Str(const int& num);
 
 string Base64Encode(const char* bytes, unsigned int len);
 
-std::string CurentDirectory(); // 获取当前exe目录 D:/abc
+std::string CurentDirectory(); // 获取当前工作目录 D:/abc
 std::string ConcatPathFileName(const std::string& path, const std::string& filename); // 路径拼接文件名（自动增加分隔符为"/"）
+std::string StripPath(const std::string& filepath); // 获取路径的最后一个成员（分割符后） "D:/abc/d.pdf" => "d.pdf"
 std::string StripFileName(const std::string& filepath); // 去除路径的最后一个成员 "D:/abc/d.pdf" => "D:/abc"
 
 void debug(string_view utf8Log);
 void info(string_view utf8Log);
 void warn(string_view utf8Log);
 void error(string_view utf8Log);
+
+size_t getFileSize(const char* filePath/*UTF8*/);
