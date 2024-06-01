@@ -615,32 +615,26 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				return;
 			}
 		}
-		/*************************************************************************************************************************************************/
 
 		// 检查头部数据
-		if ((recvIOData->localPackage.headInfo.size > TL_MAX_NET_PACKAGE_SIZE) && (NetDataType::NDT_Memory == recvIOData->localPackage.headInfo.dataType))// 数据包过大（非文件）
+		if (0 == recvIOData->localPackage.headInfo.size)
 		{
-			// 通知异常信息
-			string errMsg;
-			if (NetInfoType::NIT_NULL == recvIOData->localPackage.headInfo.netInfoType)
-			{
-				errMsg = "OnRecv::NIT_NULL";
-			}
-			else
-			{
-				if (0 == recvIOData->localPackage.headInfo.size)
-				{
-					errMsg = "OnRecv::headInfo.size==0";
-				}
-				else
-				{
-					errMsg = "OnRecv::headInfo.size too big";
-				}
-			}
-
-			OnError(NetDisconnectCode::HeadinfoError, errMsg);
+			OnError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv headInfo.size==0");
 			return;
 		}
+
+		if (NetInfoType::NIT_NULL == recvIOData->localPackage.headInfo.netInfoType)
+		{
+			OnError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv NIT_NULL");
+			return;
+		}
+
+		if ((recvIOData->localPackage.headInfo.size > TL_MAX_NET_PACKAGE_SIZE) && (NetDataType::NDT_Memory == recvIOData->localPackage.headInfo.dataType))// 数据包过大（非文件）
+		{
+			OnError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv too big");
+			return;
+		}
+		/*************************************************************************************************************************************************/
 
 		// 处理内容
 		switch (recvIOData->localPackage.headInfo.dataType)
@@ -679,7 +673,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				{
 					// 生成本地文件路径
 					FileInfo* fileInfo = (FileInfo*)recvIOData->localPackage.package1;
-					recvIOData->localPackage.filePath = ConcatPathFileName(CurentDirectory(), fileInfo->fileName);
+					recvIOData->localPackage.filePath = ConcatPathFileName(CurentDirectory() + "/download", fileInfo->fileName);
 					info("TCPHandler::onRecv start recv file...");
 				}
 				else

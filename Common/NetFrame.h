@@ -24,6 +24,7 @@ enum class NetInfoType
 	NIT_Message,
 	NIT_File,
 
+	NIT_Heartbeat,		// 心跳
 	NIT_AutoConfirm,	// 自动回复确认
 
 	NIT_NetInfoTypeEnd
@@ -35,6 +36,8 @@ enum class NetDisconnectCode
 	Unknown,		// 未知
 	Exception,		// 异常
 	ExistingConnection,		// 连接已存在
+	HeadinfoError,		// 头信息错误
+	CreateWriteFileError,		// 创建写文件句柄错误
 };
 
 enum class NetAction
@@ -164,13 +167,12 @@ public:
 
 	bool		isSending = false;		// 是否正在发送数据
 	int			sameTypeCount = 0;	// 相同数据类型的计数
+	mutex		mtxSend; // 发送锁
 
 	int			recvIONumber = 0;	// 最新的已接收IO序号
 	int			sendIONumDistributor = 0;	// 数字标记分配器（发送IO数据）
 	steady_clock::time_point 	tpSendHeartbeat;	// 心跳时间（发送）
-	steady_clock::time_point 	tpSendReceivedBytes;	// 上次发送“已接收字节数”的时间	
-
-	mutex		mtxSend; // 发送锁
+	steady_clock::time_point 	tpSendReceivedBytes;	// 上次发送“已接收字节数”的时间
 
 	IOData* getRecvIOData(); // 获取当前负责接收数据的IOData
 	void resetRecvIOData();
