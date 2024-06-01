@@ -672,8 +672,10 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				if (nodeHasRcvBytes == nodeNeedRcvBytes)
 				{
 					// 生成本地文件路径
+					string dirPath = ConcatPathFileName(CurentDirectory(), "/download");
+					MakeDirRecursively(dirPath.c_str()); // 创建本地保存文件夹
 					FileInfo* fileInfo = (FileInfo*)recvIOData->localPackage.package1;
-					recvIOData->localPackage.filePath = ConcatPathFileName(CurentDirectory() + "/download", fileInfo->fileName);
+					recvIOData->localPackage.filePath = ConcatPathFileName(dirPath, fileInfo->fileName);
 					info("TCPHandler::onRecv start recv file...");
 				}
 				else
@@ -749,7 +751,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				nodeRemainWaitBytes = bufRemainSize;
 			}
 
-			// 读取数据			
+			// 读取数据
 #ifdef _WIN32
 			std::wstring wsFilePath = UTF8ToUnicode(recvIOData->localPackage.filePath.c_str());
 			ofstream writeFile(wsFilePath.c_str(), ios::binary | ios::app);
@@ -977,12 +979,6 @@ void TCPHandler::send(IOData* ioData)
 		return;
 	}
 
-	std::unique_lock<std::mutex> lock(ioData->socketData->mtxSend, std::try_to_lock);
-	if (!lock.owns_lock())
-	{
-		return;
-	}
-
 	bool isSucceed = false;
 
 	// 重置发送心跳时间和开始时间
@@ -1075,13 +1071,17 @@ void TCPHandler::send(IOData* ioData)
 		}
 	} while (false);
 
-	lock.unlock();
-
 	OnDirectSendComplete(ioData->socketData, ioData);
 }
 
 void TCPHandler::OnDirectSendComplete(SocketData* socketData, IOData* ioData)
 {
+	unique_lock<recursive_mutex> lock(ioData->socketData->mtxSend, std::try_to_lock);
+	if (!lock.owns_lock())
+	{
+		return;
+	}
+
 	// 检查数据是否全部发送完成
 	if (ioData->localPackage.headInfo.size == ioData->localPackage.sendBytes)
 	{
@@ -1105,6 +1105,7 @@ void TCPHandler::OnDirectSendComplete(SocketData* socketData, IOData* ioData)
 		IOData* waitSendIOData = socketData->getWaitSendIOData();
 		if (waitSendIOData)
 		{
+			socketData->isSending = true;
 			send(waitSendIOData);
 		}
 		else
@@ -1146,9 +1147,7 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 		return true;
 	}
 
-	// 立即发送
-	ioData->socketData->isSending = true;
-	send(ioData);
+	OnDirectSendComplete(ioData->socketData, ioData);
 
 	return true;
 }

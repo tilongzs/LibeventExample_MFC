@@ -38,3 +38,4 @@ void warn(string_view utf8Log);
 void error(string_view utf8Log);
 
 size_t getFileSize(const char* filePath/*UTF8*/);
+void MakeDirRecursively(const char* dirPath); // 创建文件夹（递归）

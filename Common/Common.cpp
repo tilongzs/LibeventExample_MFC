@@ -359,3 +359,19 @@ size_t getFileSize(const char* filePath)
 #endif
 	return statbuf.st_size;
 }
+
+void MakeDirRecursively(const char* dirPath)
+{
+	auto parent = StripFileName(dirPath);
+	if (parent.length()) 
+	{
+		MakeDirRecursively(parent.c_str());
+	}
+
+#ifdef _WIN32
+	std::wstring wDirPath = UTF8ToUnicode(dirPath);
+	(void)_wmkdir(wDirPath.c_str());
+#else
+	mkdir(dirPath.c_str(), S_IRWXU | S_IRGRP | S_IXGRP);
+#endif
+}

@@ -7,6 +7,7 @@
 using std::string;
 using std::list;
 using std::mutex;
+using std::recursive_mutex;
 using namespace std::chrono;
 
 // 网络数据类型
@@ -167,7 +168,7 @@ public:
 
 	bool		isSending = false;		// 是否正在发送数据
 	int			sameTypeCount = 0;	// 相同数据类型的计数
-	mutex		mtxSend; // 发送锁
+	recursive_mutex		mtxSend; // 发送锁
 
 	int			recvIONumber = 0;	// 最新的已接收IO序号
 	int			sendIONumDistributor = 0;	// 数字标记分配器（发送IO数据）
