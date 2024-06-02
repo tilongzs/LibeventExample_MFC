@@ -118,6 +118,7 @@ public:
 		deletePackage();
 
 		headInfo.reset();
+		sendBytes = 0;
 		receivedBytes = 0;
 		tpStartTime = (steady_clock::time_point::min)();
 		tpEndTime = (steady_clock::time_point::min)();
@@ -190,7 +191,7 @@ public:
 	bool addSendList(IOData* ioData, bool priority = false);	// 增加至发送列表
 	IOData* getWaitSendIOData();	// 获取下一个待发送IOData
 	void onSendComplete();
-	long setConnected(long isConn);
+	void setConnected(long isConn);
 	long isConnected();
 	void resetHeartbeatRecv(const steady_clock::time_point& tp);
 

@@ -811,14 +811,13 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				recvIOData->localPackage.clear();
 				continue;
 			}
-			break;
 			case NetInfoType::NIT_AutoConfirm:
 			{
 				// 清理SendIOData
 				IOData* sendIOData = socketData->getWaitSendIOData();
 				if (sendIOData && sendIOData->localPackage.headInfo.ioNum == recvIOData->localPackage.headInfo.ioNum)
 				{
-					// 从发送列表中移除头部ioData
+					// 从发送列表中移除头部ioDatareplyConfirm
 					socketData->onSendComplete();
 				}
 
@@ -836,7 +835,6 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				}
 				continue;
 			}
-			break;
 			default:
 			{
 				// 其他类型
@@ -846,11 +844,6 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				// 没有Package数据
 				if (0 == nodeNeedRcvBytes)
 				{
-					if (recvIOData->localPackage.headInfo.needConfirm)
-					{
-						ReplyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
-					}
-
 					// 保存结束时间
 					recvIOData->localPackage.tpEndTime = steady_clock::now();
 
@@ -887,26 +880,19 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					ZeroMemory(recvIOData->localPackage.package1, recvIOData->localPackage.package1Size);
 				}
 
-				while (nodeHasRcvBytes != nodeNeedRcvBytes)
+				// 计算节点剩余待读取字节数
+				uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
+				if (nodeRemainWaitBytes > bufRemainSize)
 				{
-					// 计算节点剩余待读取字节数
-					uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
-					if (nodeRemainWaitBytes > bufRemainSize)
-					{
-						nodeRemainWaitBytes = bufRemainSize;
-					}
-
-					// 读取数据
-					memcpy_s(recvIOData->localPackage.package1 + nodeHasRcvBytes, nodeRemainWaitBytes, data + (dataSize - bufRemainSize), nodeRemainWaitBytes);
-
-					nodeHasRcvBytes += nodeRemainWaitBytes;
-					recvIOData->localPackage.receivedBytes += nodeRemainWaitBytes;
-					bufRemainSize -= nodeRemainWaitBytes;
-					if (bufRemainSize == 0)
-					{
-						break;
-					}
+					nodeRemainWaitBytes = bufRemainSize;
 				}
+
+				// 读取数据
+				memcpy_s(recvIOData->localPackage.package1 + nodeHasRcvBytes, nodeRemainWaitBytes, data + (dataSize - bufRemainSize), nodeRemainWaitBytes);
+
+				nodeHasRcvBytes += nodeRemainWaitBytes;
+				recvIOData->localPackage.receivedBytes += nodeRemainWaitBytes;
+				bufRemainSize -= nodeRemainWaitBytes;				
 
 				if (nodeHasRcvBytes == nodeNeedRcvBytes)
 				{
@@ -938,7 +924,6 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					break;
 				}
 			}
-			break;
 			}
 		}
 		break;
@@ -980,6 +965,9 @@ void TCPHandler::send(IOData* ioData)
 	}
 
 	bool isSucceed = false;
+	int nodeSendBytes = 0; // 当前节点已发送字节数
+	int nodeRemainSendBytes = 0; // 当前节点剩余待发送字节数
+	int currentSendBytes = SINGLE_PACKAGE_SIZE; // 当前将要发送字节数
 
 	// 重置发送心跳时间和开始时间
 	ioData->socketData->tpSendHeartbeat = steady_clock::now();	
@@ -1003,27 +991,69 @@ void TCPHandler::send(IOData* ioData)
 		// 发送package1
 		if (ioData->localPackage.package1Size > 0 && ioData->localPackage.sendBytes < sizeof(PackageBase) + ioData->localPackage.package1Size)
 		{
-			isSucceed = send((EventData*)ioData->socketData, ioData->localPackage.package1, ioData->localPackage.package1Size);
+			do
+			{
+				nodeSendBytes = ioData->localPackage.sendBytes - sizeof(PackageBase);
+				nodeRemainSendBytes = ioData->localPackage.package1Size - nodeSendBytes;
+				if (0 == nodeRemainSendBytes)
+				{
+					break;
+				}
+
+				currentSendBytes = nodeRemainSendBytes;
+				if (currentSendBytes > SINGLE_PACKAGE_SIZE)
+				{
+					currentSendBytes = SINGLE_PACKAGE_SIZE;
+				}
+
+				isSucceed = send((EventData*)ioData->socketData, ioData->localPackage.package1 + nodeSendBytes, currentSendBytes);
+				if (isSucceed)
+				{
+					ioData->localPackage.sendBytes += currentSendBytes;
+				}
+				else
+				{
+					break;
+				}
+			} while (true);
 			if (!isSucceed)
 			{
-				warn("TCPHandler::send package1 faild");
 				break;
 			}
-
-			ioData->localPackage.sendBytes += ioData->localPackage.package1Size;
 		}
 
 		// 发送package2
 		if (ioData->localPackage.package2Size > 0 && ioData->localPackage.sendBytes < sizeof(PackageBase) + ioData->localPackage.package1Size + ioData->localPackage.package2Size)
 		{
-			isSucceed = send((EventData*)ioData->socketData, ioData->localPackage.package2, ioData->localPackage.package2Size);
+			do
+			{
+				nodeSendBytes = ioData->localPackage.sendBytes - (sizeof(PackageBase) + ioData->localPackage.package1Size);
+				nodeRemainSendBytes = ioData->localPackage.package2Size - nodeSendBytes;
+				if (0 == nodeRemainSendBytes)
+				{
+					break;
+				}
+
+				currentSendBytes = nodeRemainSendBytes;
+				if (currentSendBytes > SINGLE_PACKAGE_SIZE)
+				{
+					currentSendBytes = SINGLE_PACKAGE_SIZE;
+				}
+
+				isSucceed = send((EventData*)ioData->socketData, ioData->localPackage.package2 + nodeSendBytes, currentSendBytes);
+				if (isSucceed)
+				{
+					ioData->localPackage.sendBytes += currentSendBytes;
+				}
+				else
+				{
+					break;
+				}
+			} while (true);
 			if (!isSucceed)
 			{
-				warn("TCPHandler::send package2 faild");
 				break;
 			}
-
-			ioData->localPackage.sendBytes += ioData->localPackage.package2Size;
 		}
 
 		// 发送文件
@@ -1050,7 +1080,6 @@ void TCPHandler::send(IOData* ioData)
 				isSucceed = send((EventData*)ioData->socketData, tmpBufer, readFile.gcount());
 				if (!isSucceed)
 				{
-					info("TCPHandler::send file faild");
 					return;
 				}
 

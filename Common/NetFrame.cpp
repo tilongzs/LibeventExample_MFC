@@ -50,7 +50,7 @@ void IOData::reset(NetAction newAction)
 void IOData::deleteBuf()
 {
 	if (action == NetAction::ACTION_RECV && !localPackage.filePath.empty() && (localPackage.tpEndTime != steady_clock::time_point::min())) {
-		// wait
+		// todo
 		// DeleteFile(localPackage.filePath); // 删除未接收完成的临时文件
 	}
 
@@ -328,15 +328,13 @@ void SocketData::onSendComplete()
 	isSending = false;
 }
 
-long SocketData::setConnected(long isConn)
+void SocketData::setConnected(long isConn)
 {
 	_isConnected = isConn;
 	if (_isConnected)
 	{
 		_tpHeartbeatRecv = steady_clock::now(); // 心跳开始计时
 	}
-
-	return _isConnected;
 }
 
 long SocketData::isConnected()

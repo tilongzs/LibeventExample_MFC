@@ -518,7 +518,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 {
 	thread([&] 
 	{
-		const size_t len = 1024 * 50;
+		const size_t len = 1024 * 100;
 		uint8_t* msg = new uint8_t[len]{ 0 };
 		memset(msg, 'T', len - 1);
 
