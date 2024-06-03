@@ -63,11 +63,11 @@ private:
 	EventData* _listenEventData = nullptr;
 	list<EventData*>	_connectedEventDataList;
 
-	function<void(EventData*, const sockaddr* /*remoteAddr*/)> _onAccept;
-	function<void(EventData*)> _onConnected;
-	function<void(const EventData* )> _onDisconnect;
-	function<void(const EventData*, const LocalPackage*)> _onRecv;
-	function<void(const EventData*, const LocalPackage*)> _onSend;
+	function<void(EventData*, const sockaddr* /*remoteAddr*/)> _cbOnAccept;
+	function<void(EventData*)> _cbOnConnected;
+	function<void(const EventData* )> _cbOnDisconnect;
+	function<void(const EventData*, const LocalPackage*)> _cbOnRecv;
+	function<void(const EventData*, const LocalPackage*)> _cbOnSend;
 
 	bool send(const EventData* eventData, const char* data, size_t dataSize); // 立即发送
 	void send(IOData* ioData); // 立即发送

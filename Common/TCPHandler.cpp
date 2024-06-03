@@ -170,10 +170,10 @@ bool TCPHandler::listen(int port, bool isUseSSL,
 	function<void(EventData*, const sockaddr*)> cbOnAccept, function<void(const EventData*)> cbOnDisconnect, function<void(const EventData*, const LocalPackage*)> cbOnRecv, function<void(const EventData*, const LocalPackage*)> cbOnSend)
 {
 	_isUseSSL = isUseSSL;
-	_onAccept = cbOnAccept;
-	_onDisconnect = cbOnDisconnect;
-	_onRecv = cbOnRecv;
-	_onSend = cbOnSend;
+	_cbOnAccept = cbOnAccept;
+	_cbOnDisconnect = cbOnDisconnect;
+	_cbOnRecv = cbOnRecv;
+	_cbOnSend = cbOnSend;
 
 	event_config* cfg = event_config_new();
 	evthread_use_windows_threads();
@@ -368,10 +368,10 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 bool TCPHandler::connect(const char* remoteIP, int remotePort, int localPort, bool isUseSSL, function<void(EventData*)> cbOnConnected, function<void(const EventData*)> cbOnDisconnect, function<void(const EventData*, const LocalPackage*)> cbOnRecv, function<void(const EventData*, const LocalPackage*)> cbOnSend)
 {
 	_isUseSSL = isUseSSL;
-	_onConnected = cbOnConnected;
-	_onDisconnect = cbOnDisconnect;
-	_onRecv = cbOnRecv;
-	_onSend = cbOnSend;
+	_cbOnConnected = cbOnConnected;
+	_cbOnDisconnect = cbOnDisconnect;
+	_cbOnRecv = cbOnRecv;
+	_cbOnSend = cbOnSend;
 
 	event_config* cfg = event_config_new();
 	evthread_use_windows_threads();
@@ -526,9 +526,9 @@ bool TCPHandler::connect(const char* remoteIP, int remotePort, int localPort, bo
 
 void TCPHandler::onEventDataDeleted(EventData* eventData)
 {
-	if (_onDisconnect)
+	if (_cbOnDisconnect)
 	{
-		_onDisconnect(eventData);
+		_cbOnDisconnect(eventData);
 	}
 
 	// 从已连接EventData列表中移除
@@ -549,9 +549,9 @@ void TCPHandler::onAccept(EventData* eventData, const sockaddr* remoteAddr)
 
 	_connectedEventDataList.emplace_back(eventData);
 
-	if (_onAccept)
+	if (_cbOnAccept)
 	{
-		_onAccept(eventData, remoteAddr);
+		_cbOnAccept(eventData, remoteAddr);
 	}
 }
 
@@ -559,9 +559,9 @@ void TCPHandler::onConnected(EventData* eventData)
 {
 	_connectedEventDataList.emplace_back(eventData);
 
-	if (_onConnected)
+	if (_cbOnConnected)
 	{
-		_onConnected(eventData);
+		_cbOnConnected(eventData);
 	}
 }
 
@@ -781,9 +781,9 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				socketData->recvIONumber = recvIOData->localPackage.headInfo.ioNum;			
 
 				// 通知接收完成
-				if (_onRecv)
+				if (_cbOnRecv)
 				{
-					_onRecv((const EventData*)socketData, &recvIOData->localPackage);
+					_cbOnRecv((const EventData*)socketData, &recvIOData->localPackage);
 				}
 
 				// 回复确认
@@ -851,9 +851,9 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					socketData->recvIONumber = recvIOData->localPackage.headInfo.ioNum;				
 
 					// 通知接收完成
-					if (_onRecv)
+					if (_cbOnRecv)
 					{
-						_onRecv((const EventData*)socketData, &recvIOData->localPackage);
+						_cbOnRecv((const EventData*)socketData, &recvIOData->localPackage);
 					}
 
 					// 回复确认
@@ -904,9 +904,9 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					socketData->recvIONumber = recvIOData->localPackage.headInfo.ioNum;
 
 					// 通知接收完成
-					if (_onRecv)
+					if (_cbOnRecv)
 					{
-						_onRecv((const EventData*)socketData, &recvIOData->localPackage);
+						_cbOnRecv((const EventData*)socketData, &recvIOData->localPackage);
 					}
 
 					// 回复确认
@@ -1122,9 +1122,9 @@ void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData)
 
 		if (ioData->localPackage.headInfo.netInfoType > NetInfoType::NIT_InternalMsg)
 		{
-			if (_onSend)
+			if (_cbOnSend)
 			{
-				_onSend((const EventData*)ioData->socketData, &ioData->localPackage);
+				_cbOnSend((const EventData*)ioData->socketData, &ioData->localPackage);
 			}
 		}
 
