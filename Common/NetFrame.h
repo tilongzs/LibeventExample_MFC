@@ -22,13 +22,15 @@ enum class NetDataType
 enum class NetInfoType
 {
 	NIT_NULL,
-	NIT_Message,
-	NIT_File,
-
 	NIT_Heartbeat,		// 心跳
 	NIT_AutoConfirm,	// 自动回复确认
 
-	NIT_NetInfoTypeEnd
+	NIT_InternalMsg,
+	// 上面的内部程序数据一般不与通知
+	/***********************************************/
+
+	NIT_Message,
+	NIT_File,
 };
 
 // 网络断开连接原因代码

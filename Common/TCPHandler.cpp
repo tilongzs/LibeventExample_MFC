@@ -10,7 +10,7 @@
 
 using namespace std;
 
-#define SINGLE_PACKAGE_SIZE 1024 * 64 // 默认16384
+#define SINGLE_PACKAGE_SIZE 65000 // 默认16384
 #define TL_MAX_NET_PACKAGE_SIZE 10485760 // 单次传输非文件类型的最大大小（10M）
 
 template<typename ... Args>
@@ -283,7 +283,7 @@ bool TCPHandler::listen(int port, bool isUseSSL,
 	return true;
 }
 
-void TCPHandler::stopListen()
+void TCPHandler::stop()
 {
 	if (_listener)
 	{
@@ -789,7 +789,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				// 回复确认
 				if (recvIOData->localPackage.headInfo.needConfirm)
 				{
-					ReplyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
+					replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 				}
 
 				// 清空接收缓存区
@@ -859,7 +859,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					// 回复确认
 					if (recvIOData->localPackage.headInfo.needConfirm)
 					{
-						ReplyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
+						replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 					}
 
 					// 清空接收缓存区
@@ -912,7 +912,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					// 回复确认
 					if (recvIOData->localPackage.headInfo.needConfirm)
 					{
-						ReplyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
+						replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 					}
 
 					// 清空接收缓存区
@@ -940,7 +940,7 @@ void TCPHandler::onSend(SocketData* socketData)
 	IOData* ioData = socketData->getWaitSendIOData();
 	if (ioData)
 	{
-		OnDirectSendComplete(socketData, ioData);
+		onReadySend(socketData, ioData);
 	}
 }
 
@@ -964,12 +964,14 @@ void TCPHandler::send(IOData* ioData)
 		return;
 	}
 
-	bool isSucceed = false;
+	ioData->socketData->isSending = true;
+
+	bool isSucceed = true;
 	int nodeSendBytes = 0; // 当前节点已发送字节数
 	int nodeRemainSendBytes = 0; // 当前节点剩余待发送字节数
 	int currentSendBytes = SINGLE_PACKAGE_SIZE; // 当前将要发送字节数
 
-	// 重置发送心跳时间和开始时间
+	// 重置发送心跳时间
 	ioData->socketData->tpSendHeartbeat = steady_clock::now();	
 
 	do
@@ -1016,6 +1018,7 @@ void TCPHandler::send(IOData* ioData)
 					break;
 				}
 			} while (true);
+
 			if (!isSucceed)
 			{
 				break;
@@ -1050,6 +1053,7 @@ void TCPHandler::send(IOData* ioData)
 					break;
 				}
 			} while (true);
+
 			if (!isSucceed)
 			{
 				break;
@@ -1100,10 +1104,10 @@ void TCPHandler::send(IOData* ioData)
 		}
 	} while (false);
 
-	OnDirectSendComplete(ioData->socketData, ioData);
+	onReadySend(ioData->socketData, ioData);
 }
 
-void TCPHandler::OnDirectSendComplete(SocketData* socketData, IOData* ioData)
+void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData)
 {
 	unique_lock<recursive_mutex> lock(ioData->socketData->mtxSend, std::try_to_lock);
 	if (!lock.owns_lock())
@@ -1116,9 +1120,12 @@ void TCPHandler::OnDirectSendComplete(SocketData* socketData, IOData* ioData)
 	{
 		ioData->localPackage.tpEndTime = steady_clock::now();
 
-		if (_onSend)
+		if (ioData->localPackage.headInfo.netInfoType > NetInfoType::NIT_InternalMsg)
 		{
-			_onSend((const EventData*)ioData->socketData, &ioData->localPackage);
+			if (_onSend)
+			{
+				_onSend((const EventData*)ioData->socketData, &ioData->localPackage);
+			}
 		}
 
 		if (ioData->isNeedConfirmRecv())
@@ -1134,7 +1141,6 @@ void TCPHandler::OnDirectSendComplete(SocketData* socketData, IOData* ioData)
 		IOData* waitSendIOData = socketData->getWaitSendIOData();
 		if (waitSendIOData)
 		{
-			socketData->isSending = true;
 			send(waitSendIOData);
 		}
 		else
@@ -1149,7 +1155,7 @@ void TCPHandler::OnDirectSendComplete(SocketData* socketData, IOData* ioData)
 	}
 }
 
-void TCPHandler::ReplyConfirm(SocketData* socketData, ULONG ioNum)
+void TCPHandler::replyConfirm(SocketData* socketData, ULONG ioNum)
 {
 	auto* ioData = socketData->getIOData(NetAction::ACTION_SEND, NetInfoType::NIT_AutoConfirm);
 	ioData->localPackage.headInfo.ioNum = ioNum;
@@ -1176,7 +1182,7 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 		return true;
 	}
 
-	OnDirectSendComplete(ioData->socketData, ioData);
+	onReadySend(ioData->socketData, ioData);
 
 	return true;
 }

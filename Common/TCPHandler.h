@@ -42,12 +42,12 @@ public:
 		function<void(const EventData* eventData)> cbOnDisconnect, 
 		function<void(const EventData*, const LocalPackage*)> cbOnRecv, 
 		function<void(const EventData*, const LocalPackage*)> cbOnSend);
-	void stopListen();
 	bool connect(const char* remoteIP, int remotePort, int localPort/*0表示随机本地端口*/, bool isUseSSL,
 		function<void(EventData* eventData)> cbOnConnected, 
 		function<void(const EventData* eventData)> cbOnDisconnect, 
 		function<void(const EventData*, const LocalPackage*)> cbOnRecv, 
 		function<void(const EventData*, const LocalPackage*)> cbOnSend);
+	void stop();
 	bool sendList(IOData* ioData, bool priority = false); // 加入发送队列	
 	bool sendList(EventData* eventData, char* data, size_t dataSize);
 	bool sendList(EventData* eventData, const string& filePath);
@@ -71,8 +71,8 @@ private:
 
 	bool send(const EventData* eventData, const char* data, size_t dataSize); // 立即发送
 	void send(IOData* ioData); // 立即发送
-	void OnDirectSendComplete(SocketData* socketData, IOData* ioData);
-	void ReplyConfirm(SocketData* socketData, ULONG ioNum);
+	void onReadySend(SocketData* socketData, IOData* ioData);
+	void replyConfirm(SocketData* socketData, ULONG ioNum);
 };
 
 class EventData : public SocketData

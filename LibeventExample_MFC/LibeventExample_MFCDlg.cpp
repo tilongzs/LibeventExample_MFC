@@ -444,8 +444,8 @@ void CLibeventExample_MFCDlg::onDisconnect(const EventData* eventData)
 	if (_currentEventData == eventData)
 	{
 		_currentEventData = nullptr;
+		AppendMsg(L"当前连接已断开");
 	}
-	AppendMsg(L"当前连接已断开");
 }
 
 void CLibeventExample_MFCDlg::OnBtnDisconnClient()
@@ -477,7 +477,8 @@ void CLibeventExample_MFCDlg::OnBtnListen()
 
 void CLibeventExample_MFCDlg::OnBtnStopListen()
 {
-	_tcpHandler.stopListen();
+	_tcpHandler.stop();
+	AppendMsg(L"服务端手动停止");
 }
 
 void CLibeventExample_MFCDlg::OnBtnConnect()
@@ -507,11 +508,8 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 
 void CLibeventExample_MFCDlg::OnBtnDisconnectServer()
 {
-	if (_currentEventData)
-	{
-		AppendMsg(L"手动断开与当前服务端的连接");
-		_currentEventData->close();
-	}
+	_tcpHandler.stop();
+	AppendMsg(L"手动断开与当前服务端的连接");
 }
 
 void CLibeventExample_MFCDlg::OnBtnSendMsg()
