@@ -87,7 +87,6 @@ public:
 		size = sizeof(PackageBase);
 	}
 };
-#pragma pack(pop) // #pragma pack(1)
 
 // 文件信息
 struct FileInfo
@@ -95,6 +94,7 @@ struct FileInfo
 	uint64_t fileLength = 0; // unsigned long long
 	char fileName[260]{ 0 };
 };
+#pragma pack(pop) // #pragma pack(1)
 
 struct PackageLocalFile
 {
