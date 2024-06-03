@@ -471,6 +471,7 @@ bool TCPHandler::connect(const char* remoteIP, int remotePort, int localPort, bo
 		{
 			delete eventData;
 			event_base_free(eventBase);
+			return false;
 		}
 	}
 
