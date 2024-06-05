@@ -568,7 +568,7 @@ void TCPHandler::onConnected(EventData* eventData)
 
 void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSize)
 {
-	auto OnError([=](NetDisconnectCode code, string_view errMsg)
+	auto onError([=](NetDisconnectCode code, string_view errMsg)
 		{
 			socketData->resetRecvIOData();
 			socketData->close();
@@ -582,6 +582,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 	// 处理数据
 	uint64_t nodeNeedRcvBytes = 0;
 	uint64_t nodeHasRcvBytes = 0;
+	uint64_t nodeRemainWaitBytes = 0;
 	uint64_t bufRemainSize = dataSize;
 	while (bufRemainSize != 0)
 	{
@@ -597,7 +598,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			nodeHasRcvBytes = recvIOData->localPackage.receivedBytes;	// TCP只发送一次头部数据，而且由于存在粘包，所以头部数据可能不会一次就接收完毕
 
 			// 计算节点剩余待读取字节数
-			uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
+			nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
 			if (nodeRemainWaitBytes > bufRemainSize)
 			{
 				nodeRemainWaitBytes = bufRemainSize;
@@ -620,19 +621,19 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 		// 检查头部数据
 		if (0 == recvIOData->localPackage.headInfo.size)
 		{
-			OnError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv headInfo.size==0");
+			onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv headInfo.size==0");
 			return;
 		}
 
 		if (NetInfoType::NIT_NULL == recvIOData->localPackage.headInfo.netInfoType)
 		{
-			OnError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv NIT_NULL");
+			onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv NIT_NULL");
 			return;
 		}
 
 		if ((recvIOData->localPackage.headInfo.size > TL_MAX_NET_PACKAGE_SIZE) && (NetDataType::NDT_Memory == recvIOData->localPackage.headInfo.dataType))// 数据包过大（非文件）
 		{
-			OnError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv too big");
+			onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv too big");
 			return;
 		}
 		/*************************************************************************************************************************************************/
@@ -657,7 +658,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				}
 
 				// 计算节点剩余待读取字节数
-				uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
+				nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
 				if (nodeRemainWaitBytes > bufRemainSize)
 				{
 					nodeRemainWaitBytes = bufRemainSize;
@@ -708,7 +709,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					}
 
 					// 计算节点剩余待读取字节数
-					uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
+					nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
 					if (nodeRemainWaitBytes > bufRemainSize)
 					{
 						nodeRemainWaitBytes = bufRemainSize;
@@ -746,7 +747,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			}
 		
 			// 计算节点剩余待读取字节数
-			uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
+			nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
 			if (nodeRemainWaitBytes > bufRemainSize)
 			{
 				nodeRemainWaitBytes = bufRemainSize;
@@ -762,7 +763,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			if (!writeFile.is_open())
 			{
 				// todo 删除已接收文件
-				OnError(NetDisconnectCode::CreateWriteFileError, "TCPHandler::onRecv ofstream open failed");
+				onError(NetDisconnectCode::CreateWriteFileError, "TCPHandler::onRecv ofstream open failed");
 				return;
 			}
 			writeFile.seekp(ios::end);
@@ -882,7 +883,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				}
 
 				// 计算节点剩余待读取字节数
-				uint64_t nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
+				nodeRemainWaitBytes = nodeNeedRcvBytes - nodeHasRcvBytes;
 				if (nodeRemainWaitBytes > bufRemainSize)
 				{
 					nodeRemainWaitBytes = bufRemainSize;
@@ -1198,7 +1199,8 @@ bool TCPHandler::sendList(EventData* eventData, const string& filePath)
 {
 	FileInfo* fileInfo = new FileInfo;
 	string fileName = StripPath(filePath);
-	sprintf_s(fileInfo->fileName, fileName.c_str());
+	strncpy_s(fileInfo->fileName, fileName.c_str(), fileName.length());
+	memset(fileInfo->fileName + fileName.length(), 0, sizeof(fileInfo->fileName) - fileName.length());
 	fileInfo->fileLength = getFileSize(filePath.c_str());
 
 	IOData* ioData = eventData->getIOData(NetAction::ACTION_SEND, NetInfoType::NIT_File, fileInfo, filePath);
