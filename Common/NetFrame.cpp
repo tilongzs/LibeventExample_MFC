@@ -270,28 +270,6 @@ bool SocketData::addSendList(IOData* ioData, bool priority)
 	}
 
 	lock_guard<mutex> lock(_mtxWaitSendIOList);
-
-	// 自动排除超过 5 个重复类型的数据
-	if (_isFilterSameTypeIO && _waitSendIOs.size() > 1) // 第一个为当前正在发送的数据
-	{
-		sameTypeCount = 0;
-		auto iter = ++_waitSendIOs.begin();
-		for (; iter != _waitSendIOs.end(); ++iter)
-		{
-			if ((*iter)->localPackage.headInfo.netInfoType == ioData->localPackage.headInfo.netInfoType)
-			{
-				sameTypeCount++;
-
-				if (sameTypeCount == 5)
-				{
-					(*iter)->reset();
-					_waitSendIOs.erase(iter);
-					break;
-				}
-			}
-		}
-	}
-
 	if (priority)
 	{
 		_waitSendIOs.emplace_front(ioData);
@@ -322,6 +300,8 @@ void SocketData::onSendComplete()
 	lock_guard<mutex> lock(_mtxWaitSendIOList);
 	if (!_waitSendIOs.empty())
 	{
+		IOData* ioData = _waitSendIOs.front();
+		ioData->reset();
 		_waitSendIOs.pop_front();
 	}
 
