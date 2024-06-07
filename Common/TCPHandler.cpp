@@ -575,6 +575,11 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			error(errMsg);
 		});
 
+	if (!socketData->isConnected())
+	{
+		return;
+	}
+
 	IOData* recvIOData = socketData->getRecvIOData();
 	// 重置接收心跳时间
 	socketData->resetHeartbeatRecv(steady_clock::now());
@@ -674,7 +679,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				if (nodeHasRcvBytes == nodeNeedRcvBytes)
 				{
 					// 生成本地文件路径
-					string dirPath = ConcatPathFileName(CurentDirectory(), "/download");
+					string dirPath = ConcatPathFileName(CurentDirectory(), "download");
 					MakeDirRecursively(dirPath.c_str()); // 创建本地保存文件夹
 					FileInfo* fileInfo = (FileInfo*)recvIOData->localPackage.package1;
 					recvIOData->localPackage.filePath = ConcatPathFileName(dirPath, fileInfo->fileName);
@@ -937,7 +942,10 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 
 void TCPHandler::onSend(SocketData* socketData)
 {
-	//info("TCPHandler::onSend");
+	if (!socketData->isConnected())
+	{
+		return;
+	}
 
 	IOData* ioData = socketData->getWaitSendIOData();
 	if (ioData)
@@ -948,6 +956,11 @@ void TCPHandler::onSend(SocketData* socketData)
 
 bool TCPHandler::send(const EventData* eventData, const char* data, size_t dataSize)
 {
+	if (!eventData->isConnected())
+	{
+		return false;
+	}
+
 	int ret = bufferevent_write(eventData->bev, data, dataSize);
 	if (ret != 0)
 	{
@@ -962,7 +975,6 @@ void TCPHandler::send(IOData* ioData)
 {
 	if (nullptr == ioData->socketData) 
 	{
-		ioData->reset();
 		return;
 	}
 
@@ -1111,6 +1123,11 @@ void TCPHandler::send(IOData* ioData)
 
 void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData)
 {
+	if (!socketData->isConnected())
+	{
+		return;
+	}
+
 	unique_lock<recursive_mutex> lock(ioData->socketData->mtxSend, std::try_to_lock);
 	if (!lock.owns_lock())
 	{
@@ -1168,6 +1185,11 @@ void TCPHandler::replyConfirm(SocketData* socketData, ULONG ioNum)
 bool TCPHandler::sendList(IOData* ioData, bool priority)
 {
 	if (!ioData)
+	{
+		return false;
+	}
+
+	if (!ioData->socketData->isConnected())
 	{
 		return false;
 	}

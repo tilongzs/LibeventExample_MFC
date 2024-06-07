@@ -69,7 +69,7 @@ class PackageBase
 public:
 	uint32_t		ioNum;	// 通信流水号
 	NetDataType		dataType;		// 网络数据类型（int）
-	bool			needConfirm;	// 据需要对方回复收到确认；默认文件数据需要，其它不需要
+	bool			needConfirm;	// 是否需要对方回复收到确认；默认文件数据需要，其它不需要
 	NetInfoType		netInfoType;	// 自定义业务网络信息类型（int）
 	uint64_t		size;	// 长度（字节、包含自身）
 
@@ -193,14 +193,14 @@ public:
 	bool addSendList(IOData* ioData, bool priority = false);	// 增加至发送列表
 	IOData* getWaitSendIOData();	// 获取下一个待发送IOData
 	void onSendComplete();
-	void setConnected(long isConn);
-	long isConnected();
+	void setConnected(bool isConn);
+	bool isConnected() const;
 	void resetHeartbeatRecv(const steady_clock::time_point& tp);
 
 	virtual void close() = 0;
 
 private:
-	bool		_isConnected = false;
+	bool		_isConnected = true;
 	steady_clock::time_point 			_tpHeartbeatRecv;	// 心跳时间（接收）
 
 	IOData* _recvIOData = nullptr;	// 当前负责接收数据的IOData；同时最多只存在一个。

@@ -308,7 +308,7 @@ void SocketData::onSendComplete()
 	isSending = false;
 }
 
-void SocketData::setConnected(long isConn)
+void SocketData::setConnected(bool isConn)
 {
 	_isConnected = isConn;
 	if (_isConnected)
@@ -317,7 +317,7 @@ void SocketData::setConnected(long isConn)
 	}
 }
 
-long SocketData::isConnected()
+bool SocketData::isConnected() const
 {
 	return _isConnected;
 }
