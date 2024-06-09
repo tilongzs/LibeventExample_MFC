@@ -616,30 +616,37 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			recvIOData->localPackage.receivedBytes += nodeRemainWaitBytes;
 			bufRemainSize -= nodeRemainWaitBytes;
 
-			if (nodeHasRcvBytes != nodeNeedRcvBytes)
+			if (nodeHasRcvBytes == nodeNeedRcvBytes)
+			{
+				// 检查头部数据
+				if (0 == recvIOData->localPackage.headInfo.size)
+				{
+					onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv headInfo.size==0");
+					return;
+				}
+
+				if (NetInfoType::NIT_NULL == recvIOData->localPackage.headInfo.netInfoType)
+				{
+					onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv NIT_NULL");
+					return;
+				}
+
+				if ((recvIOData->localPackage.headInfo.size > TL_MAX_NET_PACKAGE_SIZE) && (NetDataType::NDT_Memory == recvIOData->localPackage.headInfo.dataType))// 数据包过大（非文件）
+				{
+					onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv too big");
+					return;
+				}
+
+				if (bufRemainSize == 0)
+				{
+					return;
+				}
+			}
+			else
 			{
 				// 头部数据未接收完成
 				return;
 			}
-		}
-
-		// 检查头部数据
-		if (0 == recvIOData->localPackage.headInfo.size)
-		{
-			onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv headInfo.size==0");
-			return;
-		}
-
-		if (NetInfoType::NIT_NULL == recvIOData->localPackage.headInfo.netInfoType)
-		{
-			onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv NIT_NULL");
-			return;
-		}
-
-		if ((recvIOData->localPackage.headInfo.size > TL_MAX_NET_PACKAGE_SIZE) && (NetDataType::NDT_Memory == recvIOData->localPackage.headInfo.dataType))// 数据包过大（非文件）
-		{
-			onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv too big");
-			return;
 		}
 		/*************************************************************************************************************************************************/
 
@@ -736,7 +743,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 
 			if (0 == bufRemainSize)
 			{
-				break;
+				return;
 			}
 			/*************************************************************************************************************************************************/
 
@@ -799,8 +806,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 				}
 
-				// 清空接收缓存区
-				recvIOData->localPackage.clear();
+				socketData->resetRecvIOData();
 				continue;
 			}
 			else
@@ -815,7 +821,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			{
 			case NetInfoType::NIT_Heartbeat:
 			{
-				recvIOData->localPackage.clear();
+				socketData->resetRecvIOData();
 				continue;
 			}
 			case NetInfoType::NIT_AutoConfirm:
@@ -828,7 +834,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					socketData->onSendComplete();
 				}
 
-				recvIOData->localPackage.clear();
+				socketData->resetRecvIOData();
 				
 				// 继续发送
 				sendIOData = socketData->getWaitSendIOData();
@@ -869,8 +875,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 						replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 					}
 
-					// 清空接收缓存区
-					recvIOData->localPackage.clear();
+					socketData->resetRecvIOData();
 					continue;
 				}
 				else if (bufRemainSize == 0)
@@ -922,8 +927,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 						replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 					}
 
-					// 清空接收缓存区
-					recvIOData->localPackage.clear();
+					socketData->resetRecvIOData();
 					continue;
 				}
 				else
@@ -1197,6 +1201,7 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 	// 添加进发送列表
 	if (!ioData->socketData->addSendList(ioData, priority))
 	{
+		ioData->reset();
 		return false;
 	}
 

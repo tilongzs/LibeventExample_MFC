@@ -196,7 +196,7 @@ public:
 	void setConnected(bool isConn);
 	bool isConnected() const;
 	void resetHeartbeatRecv(const steady_clock::time_point& tp);
-
+	
 	virtual void close() = 0;
 
 private:
