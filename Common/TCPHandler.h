@@ -24,17 +24,7 @@ using std::unique_ptr;
 using std::string_view;
 
 class EventData;
-interface NetHandler
-{
-public:
-	virtual void onEventDataDeleted(EventData* eventData) = 0;
-
-	bool isUseSSL() { return _isUseSSL; }
-protected:
-	bool _isUseSSL = false;
-};
-
-class TCPHandler : public NetHandler
+class TCPHandler
 {
 public:
 	bool listen(int port, bool isUseSSL, 
@@ -57,11 +47,12 @@ public:
 	void onConnected(EventData* eventData);
 	void onRecv(SocketData* socketData, const char* data, size_t dataSize);
 	void onSend(SocketData* socketData);
-
+	inline bool isUseSSL() { return _isUseSSL; }
 private:
 	evconnlistener* _listener = nullptr;
 	EventData* _listenEventData = nullptr;
 	list<EventData*>	_connectedEventDataList;
+	bool _isUseSSL = false;
 
 	function<void(EventData*, const sockaddr* /*remoteAddr*/)> _cbOnAccept;
 	function<void(EventData*)> _cbOnConnected;
@@ -78,7 +69,7 @@ private:
 class EventData : public SocketData
 {
 public:
-	EventData(NetHandler* parent)
+	EventData(TCPHandler* parent)
 	{
 		callback = parent;
 	}
@@ -129,7 +120,7 @@ public:
 		}
 	}
 
-	NetHandler* callback = nullptr;
+	TCPHandler* callback = nullptr;
 	bufferevent* bev = nullptr;
 	event_base* eventBase = nullptr;
 	ssl_ctx_st* ssl_ctx = nullptr;
