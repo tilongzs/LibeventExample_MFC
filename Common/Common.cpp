@@ -166,7 +166,7 @@ bool IsUTF8(const char* str, size_t length)
 }
 
 
-void ConvertIPPort(const SOCKADDR_IN& addr, string& ip, int& port)
+void ConvertIPPort(const SOCKADDR_IN& addr, string& ip, uint16_t& port)
 {
 	char charBuf[16] = { 0 };
 	inet_ntop(AF_INET, &addr.sin_addr, charBuf, 16);
@@ -174,14 +174,14 @@ void ConvertIPPort(const SOCKADDR_IN& addr, string& ip, int& port)
 	port = ntohs(addr.sin_port);
 }
 
-bool ConvertIPPort(const string& ip, int port, SOCKADDR_IN& addr)
+bool ConvertIPPort(const string& ip, uint16_t port, SOCKADDR_IN& addr)
 {
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
 	return (inet_pton(AF_INET, ip.c_str(), &addr.sin_addr) != 0);
 }
 
-void ConvertIPPort(DWORD ip, int port, SOCKADDR_IN& addr)
+void ConvertIPPort(DWORD ip, uint16_t port, SOCKADDR_IN& addr)
 {
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = htonl(ip);

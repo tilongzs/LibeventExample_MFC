@@ -269,7 +269,7 @@ void CLibeventExample_MFCDlg::SetCurrentEventData(EventData* eventData)
 int CLibeventExample_MFCDlg::OnWebsocketConnect(LibeventWS* ws)
 {
 	string remoteIP = "0";
-	int remotePort = 0;
+	uint16_t remotePort = 0;
 	const struct sockaddr* remoteAddr = evhttp_connection_get_addr(ws->evConn);
 	if (remoteAddr)
 	{
@@ -406,7 +406,7 @@ void CLibeventExample_MFCDlg::OnBtnStopTimer()
 void CLibeventExample_MFCDlg::onAccept(EventData* eventData, const sockaddr* remoteAddr)
 {
 	string remoteIP = "0";
-	int remotePort = 0;
+	uint16_t remotePort = 0;
 	ConvertIPPort(*(sockaddr_in*)remoteAddr, remoteIP, remotePort);
 	CString tmpStr;
 	tmpStr.Format(L"threadID:%d 新客户端%s:%d 已连接", this_thread::get_id(), S2Unicode(remoteIP).c_str(), remotePort);
@@ -600,7 +600,7 @@ static void OnUDPRead(evutil_socket_t sockfd, short events, void* param)
 		else
 		{
 			string remoteIP;
-			int remotePort;
+			uint16_t remotePort;
 			ConvertIPPort(addr, remoteIP, remotePort);
 
 			string tmpStr = str_format("threadID:%d recvfrom %s:%d %ubyte", this_thread::get_id(), S2Unicode(remoteIP).c_str(), remotePort, recvLen);

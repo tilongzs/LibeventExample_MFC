@@ -27,12 +27,12 @@ class EventData;
 class TCPHandler
 {
 public:
-	bool listen(int port, bool isUseSSL, 
+	bool listen(uint16_t port, bool isUseSSL,
 		function<void(EventData*, const sockaddr* remoteAdd)> cbOnAccept, 
 		function<void(const EventData* eventData)> cbOnDisconnect, 
 		function<void(const EventData*, const LocalPackage*)> cbOnRecv, 
 		function<void(const EventData*, const LocalPackage*)> cbOnSend);
-	bool connect(const char* remoteIP, int remotePort, int localPort/*0表示随机本地端口*/, bool isUseSSL,
+	bool connect(const char* remoteIP, uint32_t remotePort, uint32_t localPort/*0表示随机本地端口*/, bool isUseSSL,
 		function<void(EventData* eventData)> cbOnConnected, 
 		function<void(const EventData* eventData)> cbOnDisconnect, 
 		function<void(const EventData*, const LocalPackage*)> cbOnRecv, 

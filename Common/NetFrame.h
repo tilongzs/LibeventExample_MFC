@@ -166,7 +166,7 @@ public:
 	virtual ~SocketData();
 
 	string    remoteIP;			// 远程地址
-	int       remotePort = 0;     // 远程端口
+	uint16_t  remotePort = 0;   // 远程端口
 	SocketPurpose	purpose = SocketPurpose::SP_Msg; // 用途：0、消息 1、文件
 
 	bool		isSending = false;		// 是否正在发送数据

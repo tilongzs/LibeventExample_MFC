@@ -126,6 +126,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 	// 构造一个bufferevent
 	EventData* eventData = new EventData(listenEventData->callback);
 	eventData->eventBase = eventBase;
+	ConvertIPPort(*(sockaddr_in*)remoteAddr, eventData->remoteIP, eventData->remotePort);
 	bufferevent* bev = nullptr;
 	if (listenEventData->ssl_ctx)
 	{
@@ -167,7 +168,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 }
 
-bool TCPHandler::listen(int port, bool isUseSSL,
+bool TCPHandler::listen(uint16_t port, bool isUseSSL,
 	function<void(EventData*, const sockaddr*)> cbOnAccept, function<void(const EventData*)> cbOnDisconnect, function<void(const EventData*, const LocalPackage*)> cbOnRecv, function<void(const EventData*, const LocalPackage*)> cbOnSend)
 {
 	_isUseSSL = isUseSSL;
@@ -367,7 +368,7 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 	}
 }
 
-bool TCPHandler::connect(const char* remoteIP, int remotePort, int localPort, bool isUseSSL, function<void(EventData*)> cbOnConnected, function<void(const EventData*)> cbOnDisconnect, function<void(const EventData*, const LocalPackage*)> cbOnRecv, function<void(const EventData*, const LocalPackage*)> cbOnSend)
+bool TCPHandler::connect(const char* remoteIP, uint32_t remotePort, uint32_t localPort, bool isUseSSL, function<void(EventData*)> cbOnConnected, function<void(const EventData*)> cbOnDisconnect, function<void(const EventData*, const LocalPackage*)> cbOnRecv, function<void(const EventData*, const LocalPackage*)> cbOnSend)
 {
 	_isUseSSL = isUseSSL;
 	_cbOnConnected = cbOnConnected;
@@ -391,6 +392,8 @@ bool TCPHandler::connect(const char* remoteIP, int remotePort, int localPort, bo
 
 	EventData* eventData = new EventData(this);
 	eventData->eventBase = eventBase;
+	eventData->remoteIP = remoteIP;
+	eventData->remotePort = remotePort;
 	if (isUseSSL)
 	{
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
