@@ -125,6 +125,7 @@ static void OnServerEventAccept(evconnlistener* listener, evutil_socket_t sockfd
 
 	// 构造一个bufferevent
 	EventData* eventData = new EventData(listenEventData->callback);
+	eventData->eventBase = eventBase;
 	bufferevent* bev = nullptr;
 	if (listenEventData->ssl_ctx)
 	{
@@ -267,6 +268,7 @@ bool TCPHandler::listen(int port, bool isUseSSL,
 		return false;
 	}
 	_listenEventData = eventData;
+	_listenEventData->eventBase = eventBase;
 
 	thread([&, eventBase]
 		{
@@ -388,6 +390,7 @@ bool TCPHandler::connect(const char* remoteIP, int remotePort, int localPort, bo
 	cfg = nullptr;
 
 	EventData* eventData = new EventData(this);
+	eventData->eventBase = eventBase;
 	if (isUseSSL)
 	{
 		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
@@ -842,10 +845,6 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				{
 					send(sendIOData);
 				}
-				else
-				{
-					socketData->isSending = false;
-				}
 				continue;
 			}
 			default:
@@ -954,7 +953,7 @@ void TCPHandler::onSend(SocketData* socketData)
 	IOData* ioData = socketData->getWaitSendIOData();
 	if (ioData)
 	{
-		onReadySend(socketData, ioData);
+		onReadySend(socketData, ioData, false);
 	}
 }
 
@@ -981,8 +980,6 @@ void TCPHandler::send(IOData* ioData)
 	{
 		return;
 	}
-
-	ioData->socketData->isSending = true;
 
 	bool isSucceed = true;
 	int nodeSendBytes = 0; // 当前节点已发送字节数
@@ -1122,21 +1119,17 @@ void TCPHandler::send(IOData* ioData)
 		}
 	} while (false);
 
-	onReadySend(ioData->socketData, ioData);
+	onReadySend(ioData->socketData, ioData, true);
 }
 
-void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData)
+void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData, bool isSending)
 {
 	if (!socketData->isConnected())
 	{
 		return;
 	}
 
-	unique_lock<recursive_mutex> lock(ioData->socketData->mtxSend, std::try_to_lock);
-	if (!lock.owns_lock())
-	{
-		return;
-	}
+	socketData->isSending = true;
 
 	// 检查数据是否全部发送完成
 	if (ioData->localPackage.headInfo.size == ioData->localPackage.sendBytes)
@@ -1166,16 +1159,14 @@ void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData)
 		{
 			send(waitSendIOData);
 		}
-		else
-		{
-			socketData->isSending = false;
-		}
 	}
 	else
 	{
 		// 继续发送
 		send(ioData);
 	}
+
+	socketData->isSending = isSending;
 }
 
 void TCPHandler::replyConfirm(SocketData* socketData, ULONG ioNum)
@@ -1184,6 +1175,22 @@ void TCPHandler::replyConfirm(SocketData* socketData, ULONG ioNum)
 	ioData->localPackage.headInfo.ioNum = ioNum;
 
 	sendList(ioData, true);
+}
+
+struct EventDataActiveSendList
+{
+	TCPHandler* tcpHandler;
+	SocketData* socketData;
+	struct event* ev;
+};
+
+static void OnEventActiveSendList(evutil_socket_t fd, short event, void* arg)
+{
+	//info(str_format("OnEventActiveSendList threadID:%d", this_thread::get_id()));
+	EventDataActiveSendList* eventData = (EventDataActiveSendList*)arg;
+	eventData->tcpHandler->onSend(eventData->socketData);
+	event_free(eventData->ev);
+	delete eventData;
 }
 
 bool TCPHandler::sendList(IOData* ioData, bool priority)
@@ -1198,6 +1205,9 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 		return false;
 	}
 
+	// 检查是否正在发送数据
+	bool isSendListEmpty = ioData->socketData->isSendListEmpty();
+
 	// 添加进发送列表
 	if (!ioData->socketData->addSendList(ioData, priority))
 	{
@@ -1205,13 +1215,17 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 		return false;
 	}
 
-	// 检查是否正在发送数据
-	if (ioData->socketData->isSending)
+	if (isSendListEmpty)
 	{
-		return true;
+		// 激活发送列表
+		EventDataActiveSendList* eventData = new EventDataActiveSendList;
+		eventData->tcpHandler = this;
+		eventData->socketData = ioData->socketData;
+		struct event* ev = event_new(((EventData*)ioData->socketData)->eventBase, -1, EV_ET, OnEventActiveSendList, eventData);
+		eventData->ev = ev;
+		event_add(ev, NULL);
+		event_active(ev, EV_SIGNAL, 0);
 	}
-
-	onReadySend(ioData->socketData, ioData);
 
 	return true;
 }

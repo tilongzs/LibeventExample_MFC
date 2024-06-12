@@ -171,7 +171,6 @@ public:
 
 	bool		isSending = false;		// 是否正在发送数据
 	int			sameTypeCount = 0;	// 相同数据类型的计数
-	recursive_mutex		mtxSend; // 发送锁
 
 	int			recvIONumber = 0;	// 最新的已接收IO序号
 	int			sendIONumDistributor = 0;	// 数字标记分配器（发送IO数据）
@@ -191,6 +190,7 @@ public:
 	IOData* checkConfirmTimeout(); 	// 检查回复确认超时
 	bool isHeartbeatTimeout(steady_clock::time_point currentTime, int heartbeatTimeoutMilliseconds); 	// 检查接收对方的心跳超时
 	bool addSendList(IOData* ioData, bool priority = false);	// 增加至发送列表
+	bool isSendListEmpty() const;
 	IOData* getWaitSendIOData();	// 获取下一个待发送IOData
 	void onSendComplete();
 	void setConnected(bool isConn);
@@ -205,11 +205,11 @@ private:
 
 	IOData* _recvIOData = nullptr;	// 当前负责接收数据的IOData；同时最多只存在一个。
 
-	mutex			_mtxWaitSendIOList;
+	recursive_mutex	_mtxWaitSendIOList;
 	list<IOData*>	_waitSendIOs;	// 待发送IO数据列表
 	bool			_isFilterSameTypeIO = false;	// 自动排除超过 5 个重复类型的数据
 
-	mutex			_mtxIOList;
+	recursive_mutex	_mtxIOList;
 	list<IOData*>	_ioList;		// 所有IO数据列表
 
 	IOData* getFreeIOData(NetAction action);

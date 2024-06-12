@@ -84,12 +84,12 @@ SocketData::~SocketData()
 	close();
 
 	{
-		lock_guard<mutex> lock(_mtxWaitSendIOList);
+		lock_guard lock(_mtxWaitSendIOList);
 		_waitSendIOs.clear();
 	}
 	
 	{
-		lock_guard<mutex> lock(_mtxIOList);
+		lock_guard lock(_mtxIOList);
 		for (auto iter = _ioList.begin(); iter != _ioList.end(); ++iter)
 		{
 			delete* iter;
@@ -101,7 +101,7 @@ SocketData::~SocketData()
 IOData* SocketData::getFreeIOData(NetAction action)
 {
 	{
-		lock_guard<mutex> lock(_mtxIOList);
+		lock_guard lock(_mtxIOList);
 		for (auto iter : _ioList)
 		{
 			if (iter->action == NetAction::ACTION_NULL)
@@ -132,7 +132,7 @@ IOData* SocketData::createNewIOData(NetAction action)
 		ioData->localPackage.headInfo.ioNum = sendIONumDistributor;
 	}
 
-	lock_guard<mutex> lock(_mtxIOList);
+	lock_guard lock(_mtxIOList);
 	_ioList.emplace_back(ioData);
 	return ioData;
 }
@@ -205,7 +205,7 @@ IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType, FileInf
 void SocketData::removeIOData(IOData* ioData)
 {
 	{
-		lock_guard<mutex> lock(_mtxIOList);
+		lock_guard lock(_mtxIOList);
 		for (auto iter = _ioList.begin(); iter != _ioList.end(); ++iter)
 		{
 			if (*iter == ioData)
@@ -228,7 +228,7 @@ IOData* SocketData::checkConfirmTimeout()
 
 	IOData* timeoutIOData = nullptr;
 	{
-		lock_guard<mutex> lock(_mtxWaitSendIOList);
+		lock_guard lock(_mtxWaitSendIOList);
 		steady_clock::time_point currentTime = steady_clock::now();
 		if (!_waitSendIOs.empty())
 		{
@@ -269,7 +269,7 @@ bool SocketData::addSendList(IOData* ioData, bool priority)
 		}
 	}
 
-	lock_guard<mutex> lock(_mtxWaitSendIOList);
+	lock_guard lock(_mtxWaitSendIOList);
 	if (priority)
 	{
 		_waitSendIOs.emplace_front(ioData);
@@ -283,10 +283,15 @@ bool SocketData::addSendList(IOData* ioData, bool priority)
 }
 
 
+bool SocketData::isSendListEmpty() const
+{
+	return _waitSendIOs.empty();
+}
+
 IOData* SocketData::getWaitSendIOData()
 {
 	IOData* ioData = nullptr;
-	lock_guard<mutex> lock(_mtxWaitSendIOList);
+	lock_guard lock(_mtxWaitSendIOList);
 	if (!_waitSendIOs.empty())
 	{
 		ioData = _waitSendIOs.front();
@@ -297,7 +302,7 @@ IOData* SocketData::getWaitSendIOData()
 
 void SocketData::onSendComplete()
 {
-	lock_guard<mutex> lock(_mtxWaitSendIOList);
+	lock_guard lock(_mtxWaitSendIOList);
 	if (!_waitSendIOs.empty())
 	{
 		IOData* ioData = _waitSendIOs.front();
@@ -332,5 +337,8 @@ void SocketData::resetHeartbeatRecv(const steady_clock::time_point& tp)
 
 void SocketData::close()
 {
-	setConnected(false);
+	if (isConnected())
+	{
+		setConnected(false);
+	}
 }

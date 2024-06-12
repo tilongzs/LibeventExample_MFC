@@ -493,7 +493,8 @@ void CLibeventExample_MFCDlg::OnBtnConnect()
 	const int remotePort = _wtoi(tmpStr);
 
 	_editPort.GetWindowText(tmpStr);
-	const int localPort = _wtoi(tmpStr);
+	//const int localPort = _wtoi(tmpStr); // 使用本地指定端口
+	const int localPort = 0; // 使用本地随机端口
 
 	bool ret = _tcpHandler.connect(remoteIP.c_str(), remotePort, localPort, IsUseSSL(), std::bind(&CLibeventExample_MFCDlg::onConnected, this, _1), std::bind(&CLibeventExample_MFCDlg::onDisconnect, this, _1), std::bind(&CLibeventExample_MFCDlg::onRecv, this, _1, _2), std::bind(&CLibeventExample_MFCDlg::onSend, this, _1, _2));
 	if (ret)

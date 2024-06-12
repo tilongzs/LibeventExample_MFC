@@ -71,7 +71,7 @@ private:
 
 	bool send(const EventData* eventData, const char* data, size_t dataSize); // 立即发送
 	void send(IOData* ioData); // 立即发送
-	void onReadySend(SocketData* socketData, IOData* ioData);
+	void onReadySend(SocketData* socketData, IOData* ioData, bool isSending);
 	void replyConfirm(SocketData* socketData, ULONG ioNum);
 };
 
@@ -131,6 +131,7 @@ public:
 
 	NetHandler* callback = nullptr;
 	bufferevent* bev = nullptr;
+	event_base* eventBase = nullptr;
 	ssl_ctx_st* ssl_ctx = nullptr;
 	ssl_st* ssl = nullptr;
 };
