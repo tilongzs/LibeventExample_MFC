@@ -251,15 +251,6 @@ bool CLibeventExample_MFCDlg::IsUseSSL()
 	return _btnUseSSL.GetCheck();
 }
 
-void CLibeventExample_MFCDlg::OnEventDataDeleted(EventData* eventData)
-{
-	lock_guard<mutex> lock(_mtxCurrentEventData);
-	if (_currentEventData == eventData)
-	{
-		_currentEventData = nullptr;
-	}
-}
-
 void CLibeventExample_MFCDlg::SetCurrentEventData(EventData* eventData)
 {
 	lock_guard<mutex> lock(_mtxCurrentEventData);

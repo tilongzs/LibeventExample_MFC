@@ -90,12 +90,6 @@ public:
 
 		if (bev)
 		{
-			evutil_socket_t fd = bufferevent_getfd(bev);
-			if (-1 != fd)
-			{
-				closesocket(fd);
-			}
-			bufferevent_replacefd(bev, -1);
 			bufferevent_free(bev);
 		}
 

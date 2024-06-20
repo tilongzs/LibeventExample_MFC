@@ -90,7 +90,6 @@ private:
 public:
 	void AppendMsg(const WCHAR* msg);
 	bool IsUseSSL();
-	void OnEventDataDeleted(EventData* eventData);
 	void SetCurrentEventData(EventData* eventData);
 	int OnWebsocketConnect(LibeventWS* ws);
 	int OnWebsocketDisconnect(LibeventWS* ws);
