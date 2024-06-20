@@ -1180,21 +1180,11 @@ void TCPHandler::replyConfirm(SocketData* socketData, ULONG ioNum)
 	sendList(ioData, true);
 }
 
-struct EventDataActiveSendList
+struct CommonEvent
 {
 	TCPHandler* tcpHandler;
 	SocketData* socketData;
-	struct event* ev;
 };
-
-static void OnEventActiveSendList(evutil_socket_t fd, short event, void* arg)
-{
-	//info(str_format("OnEventActiveSendList threadID:%d", this_thread::get_id()));
-	EventDataActiveSendList* eventData = (EventDataActiveSendList*)arg;
-	eventData->tcpHandler->onSend(eventData->socketData);
-	event_free(eventData->ev);
-	delete eventData;
-}
 
 bool TCPHandler::sendList(IOData* ioData, bool priority)
 {
@@ -1221,13 +1211,22 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 	if (isSendListEmpty)
 	{
 		// 激活发送列表
-		EventDataActiveSendList* eventData = new EventDataActiveSendList;
-		eventData->tcpHandler = this;
-		eventData->socketData = ioData->socketData;
-		struct event* ev = event_new(((EventData*)ioData->socketData)->eventBase, -1, EV_ET, OnEventActiveSendList, eventData);
-		eventData->ev = ev;
-		event_add(ev, NULL);
-		event_active(ev, EV_SIGNAL, 0);
+		auto onEventActive = [](evutil_socket_t fd, short event, void* arg)
+			{
+				CommonEvent* commonEvent = (CommonEvent*)arg;
+				commonEvent->tcpHandler->onSend(commonEvent->socketData);
+				delete commonEvent;
+			};
+
+		// 激活发送列表
+		CommonEvent* commonEvent = new CommonEvent;
+		commonEvent->tcpHandler = this;
+		commonEvent->socketData = ioData->socketData;
+		timeval timeout = { 0, 0 };
+		if (0 != event_base_once(((EventData*)ioData->socketData)->eventBase, -1, EV_TIMEOUT, onEventActive, commonEvent, &timeout))
+		{
+			error("TCPHandler::_sendList event_base_once failed");
+		}
 	}
 
 	return true;
