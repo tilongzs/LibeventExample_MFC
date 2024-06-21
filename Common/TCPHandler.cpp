@@ -72,6 +72,7 @@ static void onServerEvent(bufferevent* bev, short events, void* param)
 	if (events & BEV_EVENT_EOF)
 	{
 		//info(L"BEV_EVENT_EOF 连接关闭");
+		bufferevent_free(bev);
 		delete eventData;
 	}
 	else if (events & BEV_EVENT_ERROR)
@@ -87,6 +88,7 @@ static void onServerEvent(bufferevent* bev, short events, void* param)
 // 		}
 // 
 // 		info(tmpStr);
+		bufferevent_free(bev);
 		delete eventData;
 	}
 }
@@ -283,11 +285,13 @@ bool TCPHandler::listen(uint16_t port, bool isUseSSL,
 		}).detach();
 
 	info("TCPHandler::TCP Server listen begin");
+	_isBegin = true;
 	return true;
 }
 
 void TCPHandler::stop()
 {
+	_isBegin = false;
 	if (_listener)
 	{
 		evconnlistener_disable(_listener);
@@ -296,7 +300,9 @@ void TCPHandler::stop()
 	for (auto connectedEventData : _connectedEventDataList)
 	{
 		connectedEventData->close();
+		delete connectedEventData;
 	}
+	_connectedEventDataList.clear();
 }
 
 static void OnClientWrite(bufferevent* bev, void* param)
@@ -347,6 +353,7 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 	else if (events & BEV_EVENT_EOF)
 	{
 		info("TCPHandler::OnClientEvent BEV_EVENT_EOF");
+		bufferevent_free(bev);
 		delete eventData;
 	}
 	else if (events & BEV_EVENT_ERROR)
@@ -364,6 +371,7 @@ static void OnClientEvent(bufferevent* bev, short events, void* param)
 			info(str_format("TCPHandler::OnClientEvent BEV_EVENT_ERROR %d", events));
 		}
 
+		bufferevent_free(bev);
 		delete eventData;
 	}
 }
@@ -528,6 +536,7 @@ bool TCPHandler::connect(const char* remoteIP, uint32_t remotePort, uint32_t loc
 		}).detach();
 
 	info("TCPHandler::TCP Client connect begin");
+	_isBegin = true;
 	return true;
 }
 
@@ -538,15 +547,18 @@ void TCPHandler::onEventDataDeleted(EventData* eventData)
 		_cbOnDisconnect(eventData);
 	}
 
-	// 从已连接EventData列表中移除
-	for (auto iter = _connectedEventDataList.begin(); iter != _connectedEventDataList.end(); ++iter)
+	if (_isBegin)
 	{
-		if (*iter == eventData)
+		// 从已连接EventData列表中移除
+		for (auto iter = _connectedEventDataList.begin(); iter != _connectedEventDataList.end(); ++iter)
 		{
-			_connectedEventDataList.erase(iter);
-			break;
+			if (*iter == eventData)
+			{
+				_connectedEventDataList.erase(iter);
+				break;
+			}
 		}
-	}
+	}	
 }
 
 void TCPHandler::onAccept(EventData* eventData, const sockaddr* remoteAddr)
@@ -576,8 +588,8 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 {
 	auto onError([=](NetDisconnectCode code, string_view errMsg)
 		{
-			socketData->resetRecvIOData();
 			socketData->close();
+			delete socketData;
 			error(errMsg);
 		});
 

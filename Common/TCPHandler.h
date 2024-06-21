@@ -52,7 +52,8 @@ private:
 	evconnlistener* _listener = nullptr;
 	EventData* _listenEventData = nullptr;
 	list<EventData*>	_connectedEventDataList;
-	bool _isUseSSL = false;
+	bool		_isUseSSL = false;
+	bool		_isBegin = false;
 
 	function<void(EventData*, const sockaddr* /*remoteAddr*/)> _cbOnAccept;
 	function<void(EventData*)> _cbOnConnected;
@@ -78,21 +79,6 @@ public:
 
 	~EventData()
 	{
-		if (ssl_ctx)
-		{
-			SSL_CTX_free(ssl_ctx);
-		}
-
-		if (ssl)
-		{
-			SSL_shutdown(ssl);
-		}
-
-		if (bev)
-		{
-			bufferevent_free(bev);
-		}
-
 		if (callback)
 		{
 			callback->onEventDataDeleted(this);
@@ -101,16 +87,18 @@ public:
 
 	virtual void close()
 	{
-		__super::close();
+		if (isConnected())
+		{
+			setConnected(false);
+		}
+		else
+		{
+			return;
+		}
 
 		if (bev)
 		{
-			evutil_socket_t fd = bufferevent_getfd(bev);
-			if (-1 != fd)
-			{
-				closesocket(fd);
-				fd = -1;
-			}
+			bufferevent_free(bev);
 		}
 	}
 

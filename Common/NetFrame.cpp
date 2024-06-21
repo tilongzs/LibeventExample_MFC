@@ -81,7 +81,7 @@ bool IOData::isConfirmRecvTimeout(steady_clock::time_point& tp)
 
 SocketData::~SocketData()
 {
-	close();
+	setConnected(false);
 
 	{
 		lock_guard lock(_mtxWaitSendIOList);
