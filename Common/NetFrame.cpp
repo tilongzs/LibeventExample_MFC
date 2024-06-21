@@ -111,9 +111,10 @@ IOData* SocketData::getFreeIOData(NetAction action)
 				if (action == NetAction::ACTION_SEND)
 				{
 					sendIONumDistributor++;
-					iter->localPackage.headInfo.ioNum = sendIONumDistributor;
-					return iter;
+					iter->localPackage.headInfo.ioNum = sendIONumDistributor;					
 				}
+
+				return iter;
 			}
 		}
 	}	
