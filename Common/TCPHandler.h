@@ -39,7 +39,7 @@ public:
 		function<void(const EventData*, const LocalPackage*)> cbOnSend);
 	void stop();
 	bool sendList(IOData* ioData, bool priority = false); // 加入发送队列	
-	bool sendList(EventData* eventData, char* data, size_t dataSize);
+	bool sendList(EventData* eventData, char* data, size_t dataSize, bool isNeedConfirm = false);
 	bool sendList(EventData* eventData, const string& filePath);
 
 	virtual void onEventDataDeleted(EventData* eventData);

@@ -551,7 +551,7 @@ void CLibeventExample_MFCDlg::OnBtnSendMsg()
 			}
 			else
 			{
-				_tcpHandler.sendList(_currentEventData, (char*)msg, len);
+				_tcpHandler.sendList(_currentEventData, (char*)msg, len, true);
 			}
 		}	
 	}).detach();

@@ -654,11 +654,6 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 					onError(NetDisconnectCode::HeadinfoError, "TCPHandler::onRecv too big");
 					return;
 				}
-
-				if (bufRemainSize == 0)
-				{
-					return;
-				}
 			}
 			else
 			{
@@ -674,6 +669,11 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 		case NetDataType::NDT_File:
 		case NetDataType::NDT_MemoryAndFile:
 		{
+			if (bufRemainSize == 0)
+			{
+				return;
+			}
+
 			// 文件类型
 			// 接收文件基本信息(FileInfo)
 			if (recvIOData->localPackage.receivedBytes < sizeof(PackageBase) + sizeof(FileInfo))
@@ -819,7 +819,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 				}
 
 				// 回复确认
-				if (recvIOData->localPackage.headInfo.needConfirm)
+				if (recvIOData->localPackage.headInfo.isNeedConfirm)
 				{
 					replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
 				}
@@ -835,70 +835,17 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 		break;
 		case NetDataType::NDT_Memory:
 		{
-			switch (recvIOData->localPackage.headInfo.netInfoType)
+			nodeNeedRcvBytes = recvIOData->localPackage.headInfo.size - sizeof(PackageBase);
+			nodeHasRcvBytes = recvIOData->localPackage.receivedBytes - sizeof(PackageBase);
+
+			// 有Package数据
+			if (0 != nodeNeedRcvBytes)
 			{
-			case NetInfoType::NIT_Heartbeat:
-			{
-				socketData->resetRecvIOData();
-				continue;
-			}
-			case NetInfoType::NIT_AutoConfirm:
-			{
-				// 清理SendIOData
-				IOData* sendIOData = socketData->getWaitSendIOData();
-				if (sendIOData && sendIOData->localPackage.headInfo.ioNum == recvIOData->localPackage.headInfo.ioNum)
+				if (bufRemainSize == 0)
 				{
-					// 从发送列表中移除头部ioDatareplyConfirm
-					socketData->onSendComplete();
+					return;
 				}
 
-				socketData->resetRecvIOData();
-				
-				// 继续发送
-				sendIOData = socketData->getWaitSendIOData();
-				if (sendIOData)
-				{
-					send(sendIOData);
-				}
-				continue;
-			}
-			default:
-			{
-				// 其他类型
-				nodeNeedRcvBytes = recvIOData->localPackage.headInfo.size - sizeof(PackageBase);
-				nodeHasRcvBytes = recvIOData->localPackage.receivedBytes - sizeof(PackageBase);
-
-				// 没有Package数据
-				if (0 == nodeNeedRcvBytes)
-				{
-					// 保存结束时间
-					recvIOData->localPackage.tpEndTime = steady_clock::now();
-
-					// 保存最新IO序号
-					socketData->recvIONumber = recvIOData->localPackage.headInfo.ioNum;				
-
-					// 通知接收完成
-					if (_cbOnRecv)
-					{
-						_cbOnRecv((const EventData*)socketData, &recvIOData->localPackage);
-					}
-
-					// 回复确认
-					if (recvIOData->localPackage.headInfo.needConfirm)
-					{
-						replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
-					}
-
-					socketData->resetRecvIOData();
-					continue;
-				}
-				else if (bufRemainSize == 0)
-				{
-					break;
-				}
-				/**************************************************************************************************************************/
-
-				// 有Package数据
 				if (!recvIOData->localPackage.package1)
 				{
 					recvIOData->localPackage.package1Size = recvIOData->localPackage.headInfo.size - sizeof(PackageBase);
@@ -918,37 +865,73 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 
 				nodeHasRcvBytes += nodeRemainWaitBytes;
 				recvIOData->localPackage.receivedBytes += nodeRemainWaitBytes;
-				bufRemainSize -= nodeRemainWaitBytes;				
+				bufRemainSize -= nodeRemainWaitBytes;
 
-				if (nodeHasRcvBytes == nodeNeedRcvBytes)
+				if (nodeHasRcvBytes != nodeNeedRcvBytes)
 				{
-					// 全部Package接收完毕
-					// 保存结束时间
-					recvIOData->localPackage.tpEndTime = steady_clock::now();					
-
-					// 保存最新IO序号
-					socketData->recvIONumber = recvIOData->localPackage.headInfo.ioNum;
-
-					// 通知接收完成
-					if (_cbOnRecv)
-					{
-						_cbOnRecv((const EventData*)socketData, &recvIOData->localPackage);
-					}
-
-					// 回复确认
-					if (recvIOData->localPackage.headInfo.needConfirm)
-					{
-						replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
-					}
-
-					socketData->resetRecvIOData();
-					continue;
-				}
-				else
-				{
-					break;
+					return;
 				}
 			}
+			/**************************************************************************************************************************/
+
+			if (nodeHasRcvBytes == nodeNeedRcvBytes)
+			{
+				// 全部Package接收完毕
+				// 保存结束时间
+				recvIOData->localPackage.tpEndTime = steady_clock::now();
+
+				// 保存最新IO序号
+				socketData->recvIONumber = recvIOData->localPackage.headInfo.ioNum;
+
+				switch (recvIOData->localPackage.headInfo.netInfoType)
+				{
+					case NetInfoType::NIT_Heartbeat:
+					{
+						socketData->resetRecvIOData();
+						continue;
+					}
+					case NetInfoType::NIT_AutoConfirm:
+					{
+						// 清理SendIOData
+						IOData* sendIOData = socketData->getWaitSendIOData();
+						if (sendIOData && sendIOData->localPackage.headInfo.ioNum == recvIOData->localPackage.headInfo.ioNum)
+						{
+							// 从发送列表中移除头部ioDatareplyConfirm
+							socketData->onSendComplete();
+						}
+
+						socketData->resetRecvIOData();
+
+						// 继续发送
+						sendIOData = socketData->getWaitSendIOData();
+						if (sendIOData)
+						{
+							send(sendIOData);
+						}
+						continue;
+					}
+					default:
+					{
+						// 通知接收完成
+						if (_cbOnRecv)
+						{
+							_cbOnRecv((const EventData*)socketData, &recvIOData->localPackage);
+						}
+					}
+				}
+
+				// 回复确认
+				if (recvIOData->localPackage.headInfo.isNeedConfirm)
+				{
+					replyConfirm(socketData, recvIOData->localPackage.headInfo.ioNum);
+				}
+
+				socketData->resetRecvIOData();
+				continue;
+			}
+			else
+			{
+				break;
 			}
 		}
 		break;
@@ -1151,12 +1134,13 @@ void TCPHandler::onReadySend(SocketData* socketData, IOData* ioData, bool isSend
 	{
 		ioData->localPackage.tpEndTime = steady_clock::now();
 
-		if (ioData->localPackage.headInfo.netInfoType > NetInfoType::NIT_InternalMsg)
+		if (!ioData->isSendNotify && ioData->localPackage.headInfo.netInfoType > NetInfoType::NIT_InternalMsg)
 		{
 			if (_cbOnSend)
 			{
 				_cbOnSend((const EventData*)ioData->socketData, &ioData->localPackage);
 			}
+			ioData->isSendNotify = true;
 		}
 
 		if (ioData->isNeedConfirmRecv())
@@ -1244,9 +1228,9 @@ bool TCPHandler::sendList(IOData* ioData, bool priority)
 	return true;
 }
 
-bool TCPHandler::sendList(EventData* eventData, char* data, size_t dataSize)
+bool TCPHandler::sendList(EventData* eventData, char* data, size_t dataSize, bool isNeedConfirm)
 {
-	IOData* ioData = eventData->getIOData(NetAction::ACTION_SEND, NetInfoType::NIT_Message, data, dataSize);
+	IOData* ioData = eventData->getIOData(NetAction::ACTION_SEND, NetInfoType::NIT_Message, data, dataSize, isNeedConfirm);
 	return sendList(ioData);
 }
 

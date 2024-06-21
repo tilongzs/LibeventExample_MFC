@@ -43,6 +43,7 @@ void IOData::reset(NetAction newAction)
 		// DeleteFile(localPackage.filePath); // 删除未接收完成的临时文件
 	}
 
+	isSendNotify = false;
 	localPackage.clear();
 	action = newAction;
 }
@@ -60,7 +61,7 @@ void IOData::deleteBuf()
 
 bool IOData::isConfirmRecvTimeout(steady_clock::time_point& tp)
 {
-	if (!localPackage.headInfo.needConfirm)
+	if (!localPackage.headInfo.isNeedConfirm)
 	{
 		return false;
 	}
@@ -163,12 +164,13 @@ IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType)
 	return getIOData(action, netInfoType, nullptr, 0);
 }
 
-IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType, char* attachment, uint64_t attachmentSize)
+IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType, char* attachment, uint64_t attachmentSize, bool isNeedConfirm)
 {
 	IOData* ioData = getFreeIOData(action);
 	ioData->localPackage.headInfo.dataType = NetDataType::NDT_Memory;
 	ioData->localPackage.headInfo.netInfoType = netInfoType;
 	ioData->localPackage.headInfo.size = sizeof(PackageBase) + attachmentSize;
+	ioData->localPackage.headInfo.isNeedConfirm = isNeedConfirm;
 	ioData->localPackage.package1 = attachment;
 	ioData->localPackage.package1Size = attachmentSize;
 
@@ -188,11 +190,12 @@ IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType, FileInf
 	return ioData;
 }
 
-IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType, FileInfo* fileInfo, const string& attachmentFilePath, char* attachment, uint64_t attachmentSize)
+IOData* SocketData::getIOData(NetAction action, NetInfoType netInfoType, FileInfo* fileInfo, const string& attachmentFilePath, char* attachment, uint64_t attachmentSize, bool isNeedConfirm)
 {
 	IOData* ioData = getFreeIOData(action);
 	ioData->localPackage.headInfo.dataType = NetDataType::NDT_MemoryAndFile;
 	ioData->localPackage.headInfo.netInfoType = netInfoType;
+	ioData->localPackage.headInfo.isNeedConfirm = isNeedConfirm;
 	ioData->localPackage.package1 = (char*)fileInfo;
 	ioData->localPackage.package1Size = sizeof(FileInfo);
 	ioData->localPackage.package2 = attachment;

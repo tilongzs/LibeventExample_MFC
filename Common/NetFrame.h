@@ -69,7 +69,7 @@ class PackageBase
 public:
 	uint32_t		ioNum;	// 通信流水号
 	NetDataType		dataType;		// 网络数据类型（int）
-	bool			needConfirm;	// 是否需要对方回复收到确认；默认文件数据需要，其它不需要
+	bool			isNeedConfirm;	// 是否需要对方回复收到确认；默认文件数据需要，其它不需要
 	NetInfoType		netInfoType;	// 自定义业务网络信息类型（int）
 	uint64_t		size;	// 长度（字节、包含自身）
 
@@ -82,7 +82,7 @@ public:
 	{
 		ioNum = 0;
 		dataType = NetDataType::NDT_Memory;
-		needConfirm = false;
+		isNeedConfirm = false;
 		netInfoType = NetInfoType::NIT_NULL;
 		size = sizeof(PackageBase);
 	}
@@ -148,11 +148,12 @@ public:
 	NetAction	action = NetAction::ACTION_NULL;
 	SocketData* socketData;
 
-	int			    confirmTimeout = 1000;	// 自动确认的超时时长（毫秒）
+	int			    confirmTimeout = 3000;	// 自动确认的超时时长（毫秒）
+	bool			isSendNotify = false; // 已发送是否通知
 	LocalPackage	localPackage;
 
-	inline void setNeedConfirmRecv() { localPackage.headInfo.needConfirm = true; }
-	inline bool isNeedConfirmRecv() { return localPackage.headInfo.needConfirm; }
+	inline void setNeedConfirmRecv() { localPackage.headInfo.isNeedConfirm = true; }
+	inline bool isNeedConfirmRecv() { return localPackage.headInfo.isNeedConfirm; }
 	inline int getIONumber() { return localPackage.headInfo.ioNum; }
 
 	void reset(NetAction newAction = NetAction::ACTION_NULL);
@@ -182,9 +183,9 @@ public:
 
 	IOData* getIOData(NetAction action);
 	IOData* getIOData(NetAction action, NetInfoType netInfoType); // ACTION_SEND
-	IOData* getIOData(NetAction action, NetInfoType netInfoType, char* attachment, uint64_t attachmentSize); // ACTION_SEND 附带数据
+	IOData* getIOData(NetAction action, NetInfoType netInfoType, char* attachment, uint64_t attachmentSize, bool isNeedConfirm = false); // ACTION_SEND 附带数据
 	IOData* getIOData(NetAction action, NetInfoType netInfoType, FileInfo* fileInfo, const string& attachmentFilePath); // ACTION_SEND 附带文件
-	IOData* getIOData(NetAction action, NetInfoType netInfoType, FileInfo* fileInfo, const string& attachmentFilePath, char* attachment, uint64_t attachmentSize); // ACTION_SEND 附带额外数据的文件
+	IOData* getIOData(NetAction action, NetInfoType netInfoType, FileInfo* fileInfo, const string& attachmentFilePath, char* attachment, uint64_t attachmentSize, bool isNeedConfirm = false); // ACTION_SEND 附带额外数据的文件
 	void removeIOData(IOData* ioData);
 
 	IOData* checkConfirmTimeout(); 	// 检查回复确认超时
