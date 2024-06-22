@@ -299,8 +299,7 @@ void TCPHandler::stop()
 
 	for (auto connectedEventData : _connectedEventDataList)
 	{
-		connectedEventData->close();
-		delete connectedEventData;
+		connectedEventData->asyncDelete();
 	}
 	_connectedEventDataList.clear();
 }
@@ -588,8 +587,7 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 {
 	auto onError([=](NetDisconnectCode code, string_view errMsg)
 		{
-			socketData->close();
-			delete socketData;
+			socketData->asyncDelete();
 			error(errMsg);
 		});
 
@@ -1175,12 +1173,6 @@ void TCPHandler::replyConfirm(SocketData* socketData, ULONG ioNum)
 
 	sendList(ioData, true);
 }
-
-struct CommonEvent
-{
-	TCPHandler* tcpHandler;
-	SocketData* socketData;
-};
 
 bool TCPHandler::sendList(IOData* ioData, bool priority)
 {

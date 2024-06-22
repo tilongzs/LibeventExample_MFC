@@ -339,7 +339,7 @@ void SocketData::resetHeartbeatRecv(const steady_clock::time_point& tp)
 	}
 }
 
-void SocketData::close()
+void SocketData::asyncDelete()
 {
 	if (isConnected())
 	{

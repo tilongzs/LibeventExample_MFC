@@ -445,7 +445,7 @@ void CLibeventExample_MFCDlg::OnBtnDisconnClient()
 	if (_currentEventData)
 	{
 		AppendMsg(L"手动断开与当前客户端的连接");
-		_currentEventData->close();
+		_currentEventData->asyncDelete();
 	}
 }
 

@@ -67,6 +67,12 @@ private:
 	void replyConfirm(SocketData* socketData, ULONG ioNum);
 };
 
+struct CommonEvent
+{
+	TCPHandler* tcpHandler;
+	SocketData* socketData;
+};
+
 class EventData : public SocketData
 {
 public:
@@ -85,7 +91,7 @@ public:
 		}
 	}
 
-	virtual void close()
+	virtual void asyncDelete()
 	{
 		if (isConnected())
 		{
@@ -100,6 +106,20 @@ public:
 		{
 			bufferevent_free(bev);
 		}
+
+		// 延迟删除自身
+		auto onEventActive = [](evutil_socket_t fd, short event, void* arg)
+			{
+				CommonEvent* commonEvent = (CommonEvent*)arg;
+				delete commonEvent->socketData;
+				delete commonEvent;
+			};
+
+		// 激活发送列表
+		CommonEvent* commonEvent = new CommonEvent;
+		commonEvent->socketData = this;
+		timeval timeout = { 0, 1000 };
+		event_base_once(eventBase, -1, EV_TIMEOUT, onEventActive, commonEvent, &timeout);
 	}
 
 	TCPHandler* callback = nullptr;
