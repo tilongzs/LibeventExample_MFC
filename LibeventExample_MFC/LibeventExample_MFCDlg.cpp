@@ -1010,26 +1010,6 @@ static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
 	evhttp_send_reply(req, 200, "OK", nullptr);
 }
 
-static bufferevent* OnHTTPSetBev(struct event_base* eventBase, void* arg)
-{
-	EventData* listenEventData = (EventData*)arg;
-
-	// 构造一个bufferevent
-	bufferevent* bev = nullptr;
-	if (listenEventData->callback->isUseSSL())
-	{
-		// bufferevent_openssl_socket_new方法包含了对bufferevent和SSL的管理，因此当连接关闭的时候不再需要SSL_free
-		ssl_st* ssl = SSL_new(listenEventData->ssl_ctx);
-		bev = bufferevent_openssl_socket_new(eventBase, -1, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
-	}
-	else
-	{
-		bev = bufferevent_socket_new(eventBase, -1, BEV_OPT_THREADSAFE | BEV_OPT_CLOSE_ON_FREE);
-	}
-
-	return bev;
-}
-
 void CLibeventExample_MFCDlg::OnBtnHttpServer()
 {
 	event_config* cfg = event_config_new();
@@ -1062,17 +1042,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	evhttp_set_max_connections(_httpServer, 10000 * 100);
 	evhttp_set_timeout(_httpServer, 10);//设置闲置连接自动断开的超时时间(s)
 
-	//创建、绑定、监听socket
-	CString tmpStr;
-	_editPort.GetWindowText(tmpStr);
-	const int port = _wtoi(tmpStr);
-
-	sockaddr_in localAddr = { 0 };
-	localAddr.sin_family = AF_INET;
-	localAddr.sin_port = htons(port);
-
-	EventData* eventData = new EventData();
-
+	ssl_ctx_st* ssl_ctx = nullptr;
 	if (IsUseSSL())
 	{
 		CString exeDir = GetModuleDir();
@@ -1080,7 +1050,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 		CString serverKeyPath = CombinePath(exeDir, L"../3rd/OpenSSL/server.key");
 
 		// 引入之前生成好的私钥文件和证书文件
-		ssl_ctx_st* ssl_ctx = SSL_CTX_new(TLS_server_method());
+		ssl_ctx = SSL_CTX_new(TLS_server_method());
 		if (!ssl_ctx)
 		{
 			AppendMsg(L"ssl_ctx new failed");
@@ -1105,17 +1075,15 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 			AppendMsg(L"SSL_CTX_check_private_key failed");
 			return;
 		}
-
-		eventData->ssl_ctx = ssl_ctx;
-
-		evhttp_set_bevcb(_httpServer, OnHTTPSetBev, eventData);
 	}
 
+	CString tmpStr;
+	_editPort.GetWindowText(tmpStr);
+	const int port = _wtoi(tmpStr);
 	_httpSocket = evhttp_bind_socket_with_handle(_httpServer, "0.0.0.0", port);
 	if (!_httpSocket)
 	{
 		AppendMsg(L"创建evhttp_bind_socket失败");
-		delete eventData;
 		evhttp_free(_httpServer);
 		return;
 	}
@@ -1141,12 +1109,15 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	CString strLog;
 	strLog.Format(L"HTTP 服务端启动 websocket地址：%s://127.0.0.1:%d/websocket", IsUseSSL() ? L"wss" : L"ws", port);
 	AppendMsg(strLog);
-	thread([&, eventData, eventBase]
+	thread([&, ssl_ctx, eventBase]
 		{
 			event_base_dispatch(eventBase); // 阻塞
 			AppendMsg(L"HTTP服务端 event_base_dispatch线程 结束");
 
-			delete eventData;
+			if (ssl_ctx)
+			{
+				SSL_CTX_free(ssl_ctx);
+			}
 			event_base_free(eventBase);
 		}).detach();
 }
