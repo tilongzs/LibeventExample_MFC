@@ -1084,6 +1084,10 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 	if (!_httpSocket)
 	{
 		AppendMsg(L"创建evhttp_bind_socket失败");
+		if (ssl_ctx)
+		{
+			SSL_CTX_free(ssl_ctx);
+		}
 		evhttp_free(_httpServer);
 		return;
 	}
