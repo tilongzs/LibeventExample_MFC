@@ -1010,6 +1010,23 @@ static void OnHTTPUnmatchedRequest(evhttp_request* req, void* arg)
 	evhttp_send_reply(req, 200, "OK", nullptr);
 }
 
+struct bufferevent* bev_cb(struct event_base* base, void* arg) {
+	SSL_CTX* ssl_ctx = (SSL_CTX*)arg;
+	SSL* ssl = SSL_new(ssl_ctx);
+	if (!ssl)
+	{
+		printf("SSL_new failed");
+		return nullptr;
+	}
+	struct bufferevent* bev = bufferevent_openssl_socket_new(base, -1, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
+	if (!bev)
+	{
+		printf("bufferevent_openssl_socket_new failed");
+		SSL_free(ssl);
+	}
+	return bev;
+}
+
 void CLibeventExample_MFCDlg::OnBtnHttpServer()
 {
 	event_config* cfg = event_config_new();
@@ -1076,6 +1093,9 @@ void CLibeventExample_MFCDlg::OnBtnHttpServer()
 			return;
 		}
 	}
+
+	// 设置 SSL 回调
+	evhttp_set_bevcb(_httpServer, bev_cb, ssl_ctx);
 
 	CString tmpStr;
 	_editPort.GetWindowText(tmpStr);
@@ -1457,7 +1477,7 @@ void CLibeventExample_MFCDlg::OnBtnHttpPostFile()
 	const size_t fileSize = st.st_size; // 单次最大2GB（1024 * 1024 * 1024 - 1024）
 	string strFileName = UnicodeToUTF8(dlg.GetFileName()); // 文件名使用UTF-8存储
 	evhttp_add_header(req->output_headers, "FileName", strFileName.c_str());
-	evhttp_add_header(req->output_headers, "FileSize", Int2Str(fileSize).c_str());
+	evhttp_add_header(req->output_headers, "FileSize", to_string(fileSize).c_str());
 
 	// 文件数据
 	ret = evbuffer_add_file(req->output_buffer, readFile, 0, fileSize);
