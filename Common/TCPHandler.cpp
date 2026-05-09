@@ -786,15 +786,15 @@ void TCPHandler::onRecv(SocketData* socketData, const char* data, size_t dataSiz
 			std::wstring wsFilePath = UTF8ToUnicode(recvIOData->localPackage.filePath.c_str());
 			ofstream writeFile(wsFilePath.c_str(), ios::binary | ios::app);
 #else
-			ofstream writeFile(recvIOData->localPackage.filePath.c_str(), ios::binary);
+			ofstream writeFile(recvIOData->localPackage.filePath.c_str(), ios::binary | ios::app);
 #endif
 			if (!writeFile.is_open())
 			{
-				// todo 删除已接收文件
+				// 删除已接收文件
+				std::remove(recvIOData->localPackage.filePath.c_str());
 				onError(NetDisconnectCode::CreateWriteFileError, "TCPHandler::onRecv ofstream open failed");
 				return;
 			}
-			writeFile.seekp(ios::end);
 			writeFile.write(data + (dataSize - bufRemainSize), nodeRemainWaitBytes);
 			writeFile.close();
 
